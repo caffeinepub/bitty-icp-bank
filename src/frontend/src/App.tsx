@@ -22,8 +22,11 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Brain,
   CheckCircle2,
+  Clock,
   ExternalLink,
+  HelpCircle,
   Landmark,
   Loader2,
   LogOut,
@@ -73,17 +76,12 @@ function BalanceCard({
   liveValue,
   manualValue,
   isLoading,
-  variant,
 }: BalanceCardProps) {
   const hasLive = liveValue !== null && liveValue !== undefined;
   const showManual = !hasLive;
-  const cardClass =
-    variant === "icp" ? "glass-card icp-glow" : "glass-card-gold gold-glow";
-  const amountClass = variant === "icp" ? "text-icp" : "text-gold";
-  const borderClass =
-    variant === "icp"
-      ? "border-[oklch(0.72_0.12_218/0.4)]"
-      : "border-[oklch(0.87_0.17_90/0.4)]";
+  const cardClass = "glass-card-gold gold-glow";
+  const amountClass = "text-gold";
+  const borderClass = "border-[oklch(0.87_0.17_90/0.4)]";
 
   return (
     <motion.div
@@ -527,6 +525,7 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const qc = useQueryClient();
 
   const liveBalances = useGetLiveBalances();
@@ -560,10 +559,10 @@ export default function App() {
       {/* Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/assets/uploads/IMG_5289-1.jpeg')" }}
+        style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
       />
-      {/* Overlay */}
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.82)] via-[oklch(0.10_0.025_252/0.78)] to-[oklch(0.05_0.01_252/0.92)]" />
+      {/* Overlay — slightly lighter so more of the photo shows through */}
+      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.65)] via-[oklch(0.10_0.025_252/0.60)] to-[oklch(0.05_0.01_252/0.75)]" />
 
       <Toaster position="top-right" richColors />
 
@@ -573,7 +572,7 @@ export default function App() {
         <header className="sticky top-0 z-20 glass-card border-b border-border/30">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Landmark className="h-7 w-7 text-icp shrink-0" />
+              <Landmark className="h-7 w-7 text-gold shrink-0" />
               <div>
                 <h1 className="font-heading font-bold text-xl sm:text-2xl text-foreground tracking-tight leading-none">
                   BITTY ICP BANK
@@ -584,15 +583,6 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <a
-                href="https://bittyonicp.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1 text-xs text-icp hover:opacity-80 transition-opacity"
-                data-ocid="header.link"
-              >
-                Bittyonicp.com <ExternalLink className="h-3 w-3" />
-              </a>
               {isAdmin ? (
                 <Button
                   size="sm"
@@ -619,17 +609,18 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
-          {/* Mobile link */}
-          <div className="sm:hidden text-center">
-            <a
-              href="https://bittyonicp.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-icp hover:opacity-80 transition-opacity"
-              data-ocid="mobile.header.link"
+          {/* HOW IT WORKS Button */}
+          <div className="flex justify-center">
+            <motion.button
+              onClick={() => setHowItWorksOpen(true)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-sm tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
+              data-ocid="how_it_works.open_modal_button"
             >
-              Visit Bittyonicp.com <ExternalLink className="h-3 w-3" />
-            </a>
+              <HelpCircle className="h-4 w-4" />
+              How It Works
+            </motion.button>
           </div>
 
           {/* Balance Section */}
@@ -683,6 +674,45 @@ export default function App() {
                 Live query failed — showing manual balances
               </p>
             )}
+          </section>
+
+          {/* NNS Public Neuron Section */}
+          <section>
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              NNS Public Neuron
+            </h2>
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="glass-card-gold gold-glow rounded-2xl p-6"
+              data-ocid="neuron.card"
+            >
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                  <Brain className="h-6 w-6 text-gold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
+                      Neuron ID
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold shrink-0"
+                    >
+                      <Clock className="h-3 w-3 mr-1" /> Pending
+                    </Badge>
+                  </div>
+                  <p className="text-2xl font-heading font-bold text-gold italic opacity-70">
+                    Coming soon
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                    This neuron will stake ICP on behalf of the treasury
+                  </p>
+                </div>
+              </div>
+            </motion.div>
           </section>
 
           {/* Announcements */}
@@ -748,12 +778,13 @@ export default function App() {
               © {new Date().getFullYear()} BITTY ON ICP. All rights reserved.
             </span>
             <a
-              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "")}`}
+              href="https://bittyonicp.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-icp transition-colors"
+              className="flex items-center gap-1 text-base font-semibold text-gold hover:opacity-80 transition-opacity"
+              data-ocid="footer.link"
             >
-              Built with ❤️ using caffeine.ai
+              Bittyonicp.com <ExternalLink className="h-4 w-4" />
             </a>
           </div>
         </footer>
@@ -788,6 +819,111 @@ export default function App() {
               announcements={announcements.data ?? []}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* How It Works Modal */}
+      <Dialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen}>
+        <DialogContent
+          className="glass-card-gold border border-[oklch(0.87_0.17_90/0.3)] max-w-lg max-h-[85vh] overflow-y-auto"
+          data-ocid="how_it_works.dialog"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-heading flex items-center gap-2 text-gold text-xl">
+              <HelpCircle className="h-5 w-5 shrink-0" />
+              How It Works
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 pt-1 text-sm leading-relaxed">
+            <p className="text-foreground font-medium">
+              Welcome to{" "}
+              <span className="text-gold font-bold">
+                &ldquo;BITTY ICP BANK&rdquo;
+              </span>{" "}
+              — the future of{" "}
+              <span className="text-gold font-bold">
+                &ldquo;BITTY ON ICP&rdquo;
+              </span>{" "}
+              begins here.
+            </p>
+
+            <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+            <div className="space-y-3">
+              <h3 className="font-heading font-bold text-gold tracking-wide uppercase text-xs">
+                How the Bank works
+              </h3>
+              <ul className="space-y-3 text-muted-foreground">
+                <li className="flex gap-2">
+                  <span className="text-gold mt-0.5 shrink-0">◆</span>
+                  <span>
+                    Dividends from Dev&apos;s personal wallet flow to the bank
+                    to kickstart the system and will continue until the bank
+                    reaches a self-sustainable size.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-gold mt-0.5 shrink-0">◆</span>
+                  <span>
+                    Dividends from future utility and sales flow into the Bank.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-gold mt-0.5 shrink-0">◆</span>
+                  <div>
+                    <span>
+                      Every Month the community votes (on the voting platform)
+                      what happens to the treasury funds. These actions could
+                      be:
+                    </span>
+                    <ul className="mt-2 ml-4 space-y-1.5">
+                      {[
+                        "Buyback / Burn",
+                        "Rewards for games",
+                        "Hold and let the treasury grow",
+                        "Invest for further dividends",
+                      ].map((item) => (
+                        <li key={item} className="flex gap-2 items-start">
+                          <span className="text-gold/60 mt-0.5 shrink-0 text-xs">
+                            ▸
+                          </span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+            <p className="text-muted-foreground">
+              As the project grows and the FDV of{" "}
+              <span className="text-gold font-semibold">
+                &ldquo;BITTY ON ICP&rdquo;
+              </span>{" "}
+              grows to a point, a proposal will be made in the{" "}
+              <span className="text-gold font-semibold">
+                &ldquo;BITTY GOVERNANCE&rdquo;
+              </span>{" "}
+              app to sell project supply to use for a lump sum investment into
+              the NNS staking — allowing a substantial increase to the rate of
+              treasury growth.
+            </p>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHowItWorksOpen(false)}
+                className="border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.1)]"
+                data-ocid="how_it_works.close_button"
+              >
+                Got it
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
