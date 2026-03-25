@@ -851,16 +851,6 @@ export default function App() {
               </div>
             </button>
             <div className="flex items-center gap-2">
-              <motion.button
-                onClick={() => setHowItWorksOpen(true)}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-xs tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
-                data-ocid="how_it_works.open_modal_button"
-              >
-                <HelpCircle className="h-4 w-4" />
-                How It Works
-              </motion.button>
               {isAdmin && (
                 <Button
                   size="sm"
@@ -877,6 +867,20 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
+          {/* HOW IT WORKS Button */}
+          <div className="flex justify-center">
+            <motion.button
+              onClick={() => setHowItWorksOpen(true)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-sm tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
+              data-ocid="how_it_works.open_modal_button"
+            >
+              <HelpCircle className="h-4 w-4" />
+              How It Works
+            </motion.button>
+          </div>
+
           {/* Total ICP Treasury Value Banner */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
