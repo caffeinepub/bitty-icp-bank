@@ -7,6 +7,7 @@ const TREASURY_WALLET =
 const FUND_WALLET =
   "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
 const NEURON_ID = "2927437143767212939";
+const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
 
 export interface Announcement {
   id: bigint;
@@ -186,5 +187,98 @@ export function useGetNeuronStake() {
     },
     staleTime: 60_000,
     retry: 2,
+  });
+}
+
+// Fetch live token prices: ICP/USD from CoinGecko, BITTYICP/USD from ICPSwap
+export function useTokenPrices() {
+  return useQuery<{ icpUsd: number | null; bittyUsd: number | null }>({
+    queryKey: ["tokenPrices"],
+    queryFn: async () => {
+      // Fetch ICP/USD price from CoinGecko
+      let icpUsd: number | null = null;
+      try {
+        const cgRes = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=internet-computer&vs_currencies=usd",
+        );
+        if (cgRes.ok) {
+          const cgData = await cgRes.json();
+          icpUsd = cgData?.["internet-computer"]?.usd ?? null;
+        }
+      } catch {
+        icpUsd = null;
+      }
+
+      // Fetch BITTYICP price from ICPSwap info API
+      let bittyUsd: number | null = null;
+      try {
+        const swapRes = await fetch(
+          `https://info.icpswap.com/api/token/price?canisterId=${BITTYICP_CANISTER}`,
+        );
+        if (swapRes.ok) {
+          const swapData = await swapRes.json();
+          // ICPSwap returns price in USD directly
+          const price =
+            swapData?.data?.priceUSD ??
+            swapData?.priceUSD ??
+            swapData?.data?.price ??
+            swapData?.price ??
+            null;
+          if (price !== null) {
+            bittyUsd = Number(price);
+          }
+        }
+      } catch {
+        bittyUsd = null;
+      }
+
+      // Fallback: try ICPSwap v3 info endpoint
+      if (bittyUsd === null) {
+        try {
+          const swapRes2 = await fetch(
+            `https://api.icpswap.com/v3/token/price?canisterId=${BITTYICP_CANISTER}`,
+          );
+          if (swapRes2.ok) {
+            const swapData2 = await swapRes2.json();
+            const price =
+              swapData2?.data?.priceUSD ??
+              swapData2?.priceUSD ??
+              swapData2?.data?.price ??
+              swapData2?.price ??
+              null;
+            if (price !== null) {
+              bittyUsd = Number(price);
+            }
+          }
+        } catch {
+          bittyUsd = null;
+        }
+      }
+
+      // Last fallback: derive BITTYICP USD from ICPSwap pair ratio * ICP price
+      if (bittyUsd === null && icpUsd !== null) {
+        try {
+          // Use ICPSwap's pool token price endpoint (ICP → BITTYICP)
+          const pairRes = await fetch(
+            `https://api.icpswap.com/v3/swap/pool/tokens?token0=ryjl3-tyaaa-aaaaa-aaaba-cai&token1=${BITTYICP_CANISTER}`,
+          );
+          if (pairRes.ok) {
+            const pairData = await pairRes.json();
+            // token1Price = BITTYICP per 1 ICP
+            const bittyPerIcp =
+              pairData?.data?.token1Price ?? pairData?.token1Price ?? null;
+            if (bittyPerIcp !== null && Number(bittyPerIcp) > 0) {
+              bittyUsd = icpUsd / Number(bittyPerIcp);
+            }
+          }
+        } catch {
+          bittyUsd = null;
+        }
+      }
+
+      return { icpUsd, bittyUsd };
+    },
+    staleTime: 60_000,
+    retry: 1,
   });
 }

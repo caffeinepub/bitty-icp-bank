@@ -20,6 +20,7 @@ import {
   useGetNeuronStake,
   useSetManualBalances,
   useSetManualFundBalance,
+  useTokenPrices,
   useUpdateAnnouncement,
 } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -90,6 +91,23 @@ function formatBalance(raw: bigint): string {
   });
 }
 
+function formatUsd(amount: number): string {
+  if (amount >= 1000) {
+    return amount.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
+
 function formatDate(ts: bigint): string {
   const ms = Number(ts) / 1_000_000;
   return new Date(ms).toLocaleString("en-US", {
@@ -101,6 +119,21 @@ function formatDate(ts: bigint): string {
   });
 }
 
+// Resolve displayed balance as a number for USD calc
+function resolveBalanceNumber(
+  manualValue: string | undefined,
+  liveValue: bigint | null | undefined,
+): number | null {
+  if (manualValue && manualValue.trim() !== "") {
+    const n = Number.parseFloat(manualValue.replace(/,/g, ""));
+    return Number.isNaN(n) ? null : n;
+  }
+  if (liveValue !== null && liveValue !== undefined) {
+    return Number(liveValue) / 1e8;
+  }
+  return null;
+}
+
 // ─── Balance Card ────────────────────────────────────────────────────────────
 interface BalanceCardProps {
   token: string;
@@ -109,6 +142,7 @@ interface BalanceCardProps {
   manualValue: string | undefined;
   isLoading: boolean;
   isAdmin: boolean;
+  usdPrice: number | null | undefined; // price per token in USD
 }
 
 function BalanceCard({
@@ -118,14 +152,20 @@ function BalanceCard({
   manualValue,
   isLoading,
   isAdmin,
+  usdPrice,
 }: BalanceCardProps) {
-  // Manual overrides live if set; otherwise fall back to live
   const hasManual = manualValue && manualValue.trim() !== "";
   const hasLive = liveValue !== null && liveValue !== undefined;
   const showingManual = hasManual;
   const cardClass = "glass-card-gold gold-glow";
   const amountClass = "text-gold";
   const borderClass = "border-[oklch(0.87_0.17_90/0.4)]";
+
+  const balanceNum = resolveBalanceNumber(manualValue, liveValue);
+  const usdValue =
+    balanceNum !== null && usdPrice != null && usdPrice > 0
+      ? balanceNum * usdPrice
+      : null;
 
   return (
     <motion.div
@@ -149,15 +189,11 @@ function BalanceCard({
           >
             <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
           </Badge>
-        ) : showingManual ? (
-          // Public sees manual but without the admin badge
-          <Badge
-            variant="outline"
-            className={`text-xs ${borderClass} ${amountClass}`}
-          >
-            <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-          </Badge>
-        ) : hasLive ? (
+        ) : usdValue !== null ? (
+          <span className="text-xs font-semibold text-gold/80">
+            {formatUsd(usdValue)}
+          </span>
+        ) : showingManual || hasLive ? (
           <Badge
             variant="outline"
             className={`text-xs ${borderClass} ${amountClass}`}
@@ -582,13 +618,11 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
 
   async function handleLogin() {
     setError("");
-    // Client-side check first — always works even if backend is slow/down
     if (pw === ADMIN_PASSWORD) {
       onSuccess(pw);
       resetForm();
       return;
     }
-    // Fallback: try backend
     setLoading(true);
     try {
       const ok = await adminLogin.mutateAsync({ password: pw });
@@ -699,6 +733,7 @@ export default function App() {
   const neuronStake = useGetNeuronStake();
   const manualBalances = useGetManualBalances();
   const announcements = useGetAnnouncements();
+  const tokenPrices = useTokenPrices();
 
   const isAdmin = !!adminPassword;
 
@@ -708,6 +743,7 @@ export default function App() {
     qc.invalidateQueries({ queryKey: ["announcements"] });
     qc.invalidateQueries({ queryKey: ["fundBalance"] });
     qc.invalidateQueries({ queryKey: ["neuronStake"] });
+    qc.invalidateQueries({ queryKey: ["tokenPrices"] });
     toast.success("Refreshing balances...");
   }
 
@@ -722,14 +758,27 @@ export default function App() {
   const bittyLive = liveBalances.data?.bitty ?? null;
   const fundLive = fundBalance.data ?? null;
 
-  // Manual overrides: if set, show manual; otherwise show live
   const manualIcp = manualBalances.data?.icp ?? "";
   const manualBitty = manualBalances.data?.bitty ?? "";
   const manualFund = manualBalances.data?.fund ?? "";
 
-  // Fund display: manual takes priority, then live
   const fundHasManual = manualFund.trim() !== "";
   const fundHasLive = fundLive !== null;
+
+  const icpUsd = tokenPrices.data?.icpUsd ?? null;
+  const bittyUsd = tokenPrices.data?.bittyUsd ?? null;
+
+  // Neuron stake USD
+  const neuronStakeNum = neuronStake.data ?? null;
+  const neuronUsdValue =
+    neuronStakeNum !== null && icpUsd !== null ? neuronStakeNum * icpUsd : null;
+
+  // Fund USD value
+  const fundBalanceNum = resolveBalanceNumber(manualFund, fundLive ?? null);
+  const fundUsdValue =
+    fundBalanceNum !== null && bittyUsd !== null
+      ? fundBalanceNum * bittyUsd
+      : null;
 
   const sortedAnnouncements = [...(announcements.data ?? [])].sort((a, b) =>
     b.timestamp > a.timestamp ? 1 : -1,
@@ -820,7 +869,9 @@ export default function App() {
                 data-ocid="balances.refresh_button"
               >
                 <RefreshCw
-                  className={`h-4 w-4 mr-1 ${liveBalances.isFetching ? "animate-spin" : ""}`}
+                  className={`h-4 w-4 mr-1 ${
+                    liveBalances.isFetching ? "animate-spin" : ""
+                  }`}
                 />
                 Refresh
               </Button>
@@ -834,6 +885,7 @@ export default function App() {
                 manualValue={manualIcp}
                 isLoading={liveBalances.isLoading && manualBalances.isLoading}
                 isAdmin={isAdmin}
+                usdPrice={icpUsd}
               />
               <BalanceCard
                 token="$BITTYICP Balance"
@@ -842,6 +894,7 @@ export default function App() {
                 manualValue={manualBitty}
                 isLoading={liveBalances.isLoading && manualBalances.isLoading}
                 isAdmin={isAdmin}
+                usdPrice={bittyUsd}
               />
             </div>
 
@@ -908,6 +961,10 @@ export default function App() {
                     >
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
                     </Badge>
+                  ) : neuronUsdValue !== null ? (
+                    <span className="text-xs font-semibold text-gold/80">
+                      {formatUsd(neuronUsdValue)}
+                    </span>
                   ) : neuronStake.data !== null &&
                     neuronStake.data !== undefined ? (
                     <Badge
@@ -983,6 +1040,10 @@ export default function App() {
                       >
                         <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
                       </Badge>
+                    ) : fundUsdValue !== null ? (
+                      <span className="text-xs font-semibold text-gold/80">
+                        {formatUsd(fundUsdValue)}
+                      </span>
                     ) : fundHasManual || fundHasLive ? (
                       <Badge
                         variant="outline"
