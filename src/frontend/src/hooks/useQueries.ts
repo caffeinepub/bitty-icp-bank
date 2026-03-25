@@ -1,5 +1,12 @@
+import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActor } from "./useActor";
+
+const TREASURY_WALLET =
+  "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
+const FUND_WALLET =
+  "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
+const NEURON_ID = "2927437143767212939";
 
 export interface Announcement {
   id: bigint;
@@ -8,24 +15,29 @@ export interface Announcement {
   timestamp: bigint;
 }
 
+// Fetch ICP and BITTYICP balances directly from ledger canisters (frontend agent)
 export function useGetLiveBalances() {
-  const { actor, isFetching } = useActor();
   return useQuery<{ icp: bigint | null; bitty: bigint | null }>({
     queryKey: ["liveBalances"],
     queryFn: async () => {
-      if (!actor) return { icp: null, bitty: null };
-      const a = actor as any;
-      const [icpRes, bittyRes] = await Promise.all([
-        a.getLiveICPBalance ? a.getLiveICPBalance() : Promise.resolve([]),
-        a.getLiveBITTYBalance ? a.getLiveBITTYBalance() : Promise.resolve([]),
+      const [icp, bitty] = await Promise.all([
+        getICPBalance(TREASURY_WALLET),
+        getBITTYBalance(TREASURY_WALLET),
       ]);
-      return {
-        icp: Array.isArray(icpRes) && icpRes.length > 0 ? icpRes[0] : null,
-        bitty:
-          Array.isArray(bittyRes) && bittyRes.length > 0 ? bittyRes[0] : null,
-      };
+      return { icp, bitty };
     },
-    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+    retry: 2,
+  });
+}
+
+// Fetch fund balance directly from BITTYICP ledger (frontend agent)
+export function useGetFundBalance() {
+  return useQuery<bigint | null>({
+    queryKey: ["fundBalance"],
+    queryFn: async () => {
+      return await getBITTYBalance(FUND_WALLET);
+    },
     staleTime: 30_000,
     retry: 2,
   });
@@ -33,12 +45,12 @@ export function useGetLiveBalances() {
 
 export function useGetManualBalances() {
   const { actor, isFetching } = useActor();
-  return useQuery<{ icp: string; bitty: string }>({
+  return useQuery<{ icp: string; bitty: string; fund: string }>({
     queryKey: ["manualBalances"],
     queryFn: async () => {
-      if (!actor) return { icp: "0", bitty: "0" };
+      if (!actor) return { icp: "", bitty: "", fund: "" };
       const a = actor as any;
-      if (!a.getManualBalances) return { icp: "0", bitty: "0" };
+      if (!a.getManualBalances) return { icp: "", bitty: "", fund: "" };
       return await a.getManualBalances();
     },
     enabled: !!actor && !isFetching,
@@ -135,5 +147,44 @@ export function useSetManualBalances() {
       return await a.setManualBalances(password, icp, bitty);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
+  });
+}
+
+export function useSetManualFundBalance() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation<boolean, Error, { password: string; fund: string }>({
+    mutationFn: async ({ password, fund }) => {
+      if (!actor) throw new Error("No actor");
+      const a = actor as any;
+      return await a.setManualFundBalance(password, fund);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
+  });
+}
+
+export function useGetNeuronStake() {
+  return useQuery<number | null>({
+    queryKey: ["neuronStake"],
+    queryFn: async () => {
+      try {
+        const res = await fetch(
+          `https://ic-api.internetcomputer.org/api/v3/neurons/${NEURON_ID}`,
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        const stakeE8s =
+          data?.cached_neuron_stake_e8s ??
+          data?.stake_e8s ??
+          data?.neuron?.cached_neuron_stake_e8s ??
+          null;
+        if (stakeE8s === null) return null;
+        return Number(stakeE8s) / 1e8;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 60_000,
+    retry: 2,
   });
 }

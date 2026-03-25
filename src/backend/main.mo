@@ -1,20 +1,12 @@
-import Principal "mo:base/Principal";
 import Array "mo:base/Array";
 import Time "mo:base/Time";
 import Text "mo:base/Text";
 import Nat "mo:base/Nat";
-import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
-import Iter "mo:base/Iter";
 
 actor {
 
   // ---- Types ----
-
-  type Account = {
-    owner : Principal;
-    subaccount : ?[Nat8];
-  };
 
   type Announcement = {
     id : Nat;
@@ -23,21 +15,21 @@ actor {
     timestamp : Int;
   };
 
-  // ICRC-1 ledger interface
-  type ICRC1Ledger = actor {
-    icrc1_balance_of : (Account) -> async Nat;
-  };
-
   // ---- State ----
 
   stable var announcements : [Announcement] = [];
   stable var nextId : Nat = 1;
   stable var manualICP : Text = "";
   stable var manualBITTY : Text = "";
+  stable var manualFund : Text = "";
+
+  // Kept for upgrade compatibility with previous version
+  stable var WALLET_PRINCIPAL : Text = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
+  stable var FUND_WALLET_PRINCIPAL : Text = "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
+  stable var ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+  stable var BITTY_LEDGER_ID : Text = "qroj6-lyaaa-aaaam-qeqta-cai";
+
   let ADMIN_PASSWORD = "bittybittywhatwhat";
-  let WALLET_PRINCIPAL = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
-  let ICP_LEDGER_ID = "ryjl3-tyaaa-aaaaa-aaaba-cai";
-  let BITTY_LEDGER_ID = "qroj6-lyaaa-aaaam-qeqta-cai";
 
   // ---- Admin Auth ----
 
@@ -49,42 +41,22 @@ actor {
     password == ADMIN_PASSWORD
   };
 
-  // ---- Live Balances ----
-
-  public func getLiveICPBalance() : async ?Nat {
-    let walletPrincipal = Principal.fromText(WALLET_PRINCIPAL);
-    let ledger : ICRC1Ledger = actor(ICP_LEDGER_ID);
-    let account : Account = { owner = walletPrincipal; subaccount = null };
-    try {
-      let balance = await ledger.icrc1_balance_of(account);
-      ?balance
-    } catch (_) {
-      null
-    }
-  };
-
-  public func getLiveBITTYBalance() : async ?Nat {
-    let walletPrincipal = Principal.fromText(WALLET_PRINCIPAL);
-    let ledger : ICRC1Ledger = actor(BITTY_LEDGER_ID);
-    let account : Account = { owner = walletPrincipal; subaccount = null };
-    try {
-      let balance = await ledger.icrc1_balance_of(account);
-      ?balance
-    } catch (_) {
-      null
-    }
-  };
-
   // ---- Manual Balances ----
 
-  public query func getManualBalances() : async { icp : Text; bitty : Text } {
-    { icp = manualICP; bitty = manualBITTY }
+  public query func getManualBalances() : async { icp : Text; bitty : Text; fund : Text } {
+    { icp = manualICP; bitty = manualBITTY; fund = manualFund }
   };
 
   public func setManualBalances(password : Text, icp : Text, bitty : Text) : async Bool {
     if (not isAdmin(password)) return false;
     manualICP := icp;
     manualBITTY := bitty;
+    true
+  };
+
+  public func setManualFundBalance(password : Text, fund : Text) : async Bool {
+    if (not isAdmin(password)) return false;
+    manualFund := fund;
     true
   };
 

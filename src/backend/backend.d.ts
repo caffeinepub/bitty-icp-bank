@@ -10,14 +10,14 @@ export interface Announcement {
 export interface ManualBalances {
   icp: string;
   bitty: string;
+  fund: string;
 }
 
 export interface _SERVICE {
   adminLogin: (password: string) => Promise<boolean>;
-  getLiveICPBalance: () => Promise<[] | [bigint]>;
-  getLiveBITTYBalance: () => Promise<[] | [bigint]>;
   getManualBalances: () => Promise<ManualBalances>;
   setManualBalances: (password: string, icp: string, bitty: string) => Promise<boolean>;
+  setManualFundBalance: (password: string, fund: string) => Promise<boolean>;
   getAnnouncements: () => Promise<Announcement[]>;
   addAnnouncement: (password: string, title: string, body: string) => Promise<[] | [Announcement]>;
   updateAnnouncement: (password: string, id: bigint, title: string, body: string) => Promise<boolean>;

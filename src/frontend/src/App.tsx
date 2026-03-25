@@ -14,9 +14,12 @@ import {
   useAdminLogin,
   useDeleteAnnouncement,
   useGetAnnouncements,
+  useGetFundBalance,
   useGetLiveBalances,
   useGetManualBalances,
+  useGetNeuronStake,
   useSetManualBalances,
+  useSetManualFundBalance,
   useUpdateAnnouncement,
 } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,7 +27,7 @@ import {
   AlertTriangle,
   Brain,
   CheckCircle2,
-  Clock,
+  Copy,
   ExternalLink,
   HelpCircle,
   Landmark,
@@ -35,10 +38,49 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
+  TrendingUp,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Toaster, toast } from "sonner";
+
+const TREASURY_WALLET =
+  "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
+const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
+const FUND_WALLET =
+  "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
+const NEURON_ID = "2927437143767212939";
+const ADMIN_PASSWORD = "bittybittywhatwhat";
+
+function copyToClipboard(text: string, label: string) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      toast.success(`${label} copied to clipboard!`);
+    })
+    .catch(() => {
+      toast.error("Failed to copy to clipboard");
+    });
+}
+
+function CopyableId({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <span className="font-mono text-xs text-muted-foreground break-all bg-black/20 rounded-lg px-3 py-1.5 flex-1">
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={() => copyToClipboard(value, label)}
+        className="shrink-0 p-1.5 rounded-lg border border-[oklch(0.87_0.17_90/0.3)] bg-[oklch(0.87_0.17_90/0.08)] text-gold hover:bg-[oklch(0.87_0.17_90/0.18)] transition-colors"
+        title={`Copy ${label}`}
+        data-ocid={`copy.${label.toLowerCase().replace(/\s/g, "_")}`}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 function formatBalance(raw: bigint): string {
   const n = Number(raw);
@@ -65,9 +107,8 @@ interface BalanceCardProps {
   symbol: string;
   liveValue: bigint | null | undefined;
   manualValue: string | undefined;
-  isLive: boolean;
   isLoading: boolean;
-  variant: "icp" | "bitty";
+  isAdmin: boolean;
 }
 
 function BalanceCard({
@@ -76,9 +117,12 @@ function BalanceCard({
   liveValue,
   manualValue,
   isLoading,
+  isAdmin,
 }: BalanceCardProps) {
+  // Manual overrides live if set; otherwise fall back to live
+  const hasManual = manualValue && manualValue.trim() !== "";
   const hasLive = liveValue !== null && liveValue !== undefined;
-  const showManual = !hasLive;
+  const showingManual = hasManual;
   const cardClass = "glass-card-gold gold-glow";
   const amountClass = "text-gold";
   const borderClass = "border-[oklch(0.87_0.17_90/0.4)]";
@@ -98,31 +142,41 @@ function BalanceCard({
           <Badge variant="outline" className={`text-xs ${borderClass}`}>
             <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
           </Badge>
-        ) : showManual ? (
+        ) : showingManual && isAdmin ? (
           <Badge
             variant="outline"
             className="text-xs border-yellow-500/40 text-yellow-400"
           >
             <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
           </Badge>
-        ) : (
+        ) : showingManual ? (
+          // Public sees manual but without the admin badge
           <Badge
             variant="outline"
             className={`text-xs ${borderClass} ${amountClass}`}
           >
             <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
           </Badge>
-        )}
+        ) : hasLive ? (
+          <Badge
+            variant="outline"
+            className={`text-xs ${borderClass} ${amountClass}`}
+          >
+            <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
+          </Badge>
+        ) : null}
       </div>
       <div
         className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
       >
         {isLoading ? (
           <span className="opacity-40">—</span>
+        ) : hasManual ? (
+          manualValue
         ) : hasLive ? (
           formatBalance(liveValue!)
         ) : (
-          (manualValue ?? "0")
+          <span className="opacity-40">0</span>
         )}
       </div>
       <div className="text-xs text-muted-foreground font-mono">{symbol}</div>
@@ -145,11 +199,13 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const [editBody, setEditBody] = useState("");
   const [manualIcp, setManualIcp] = useState("");
   const [manualBitty, setManualBitty] = useState("");
+  const [manualFund, setManualFund] = useState("");
 
   const addAnn = useAddAnnouncement();
   const updateAnn = useUpdateAnnouncement();
   const deleteAnn = useDeleteAnnouncement();
   const setManual = useSetManualBalances();
+  const setManualFundBalance = useSetManualFundBalance();
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -186,7 +242,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     toast.success("Announcement deleted");
   }
 
-  async function handleSaveManual() {
+  async function handleSaveTreasuryManual() {
     if (!manualIcp.trim() && !manualBitty.trim()) {
       toast.error("Enter at least one balance");
       return;
@@ -196,9 +252,35 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       icp: manualIcp.trim(),
       bitty: manualBitty.trim(),
     });
-    toast.success("Manual balances saved!");
+    toast.success("Treasury manual balances saved!");
     setManualIcp("");
     setManualBitty("");
+  }
+
+  async function handleClearTreasuryManual() {
+    await setManual.mutateAsync({ password, icp: "", bitty: "" });
+    toast.success("Treasury manual balances cleared — live values will show");
+    setManualIcp("");
+    setManualBitty("");
+  }
+
+  async function handleSaveFundManual() {
+    if (!manualFund.trim()) {
+      toast.error("Enter a balance amount");
+      return;
+    }
+    await setManualFundBalance.mutateAsync({
+      password,
+      fund: manualFund.trim(),
+    });
+    toast.success("Fund manual balance saved!");
+    setManualFund("");
+  }
+
+  async function handleClearFundManual() {
+    await setManualFundBalance.mutateAsync({ password, fund: "" });
+    toast.success("Fund manual balance cleared — live value will show");
+    setManualFund("");
   }
 
   return (
@@ -259,13 +341,13 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
         </Button>
       </div>
 
-      {/* Manual Balance Override */}
+      {/* Treasury Manual Balance Override */}
       <div className="glass-card-gold rounded-xl p-5 space-y-4">
         <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
-          Manual Balance Override
+          Treasury Manual Override
         </h3>
         <p className="text-xs text-muted-foreground">
-          Set fallback balances shown when live query fails.
+          Manual values take priority over live. Clear to show live again.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
@@ -277,7 +359,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
             </label>
             <Input
               id="manual-icp"
-              placeholder="e.g. 1234.56789"
+              placeholder="e.g. 1234.5678"
               value={manualIcp}
               onChange={(e) => setManualIcp(e.target.value)}
               className="bg-secondary/50 border-border font-mono"
@@ -301,18 +383,79 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
             />
           </div>
         </div>
-        <Button
-          onClick={handleSaveManual}
-          disabled={setManual.isPending}
-          variant="outline"
-          className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 w-full"
-          data-ocid="manual.save_button"
-        >
-          {setManual.isPending ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : null}
-          Save Manual Balances
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleSaveTreasuryManual}
+            disabled={setManual.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="manual.save_button"
+          >
+            {setManual.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save
+          </Button>
+          <Button
+            onClick={handleClearTreasuryManual}
+            disabled={setManual.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="manual.clear_button"
+          >
+            Clear (use live)
+          </Button>
+        </div>
+      </div>
+
+      {/* Fund Manual Balance Override */}
+      <div className="glass-card-gold rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
+          Fund Manual Override
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Override the Future Investment Fund $BITTYICP balance. Manual takes
+          priority over live.
+        </p>
+        <div className="space-y-1">
+          <label
+            htmlFor="manual-fund"
+            className="text-xs text-muted-foreground"
+          >
+            Fund $BITTYICP Amount
+          </label>
+          <Input
+            id="manual-fund"
+            placeholder="e.g. 1000000"
+            value={manualFund}
+            onChange={(e) => setManualFund(e.target.value)}
+            className="bg-secondary/50 border-border font-mono"
+            data-ocid="manual.fund.input"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleSaveFundManual}
+            disabled={setManualFundBalance.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="manual.fund.save_button"
+          >
+            {setManualFundBalance.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save Fund Balance
+          </Button>
+          <Button
+            onClick={handleClearFundManual}
+            disabled={setManualFundBalance.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="manual.fund.clear_button"
+          >
+            Clear (use live)
+          </Button>
+        </div>
       </div>
 
       {/* Existing Announcements */}
@@ -429,19 +572,36 @@ interface LoginModalProps {
 function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
   const [pw, setPw] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const adminLogin = useAdminLogin();
+
+  function resetForm() {
+    setPw("");
+    setError("");
+  }
 
   async function handleLogin() {
     setError("");
+    // Client-side check first — always works even if backend is slow/down
+    if (pw === ADMIN_PASSWORD) {
+      onSuccess(pw);
+      resetForm();
+      return;
+    }
+    // Fallback: try backend
+    setLoading(true);
     try {
       const ok = await adminLogin.mutateAsync({ password: pw });
       if (ok) {
         onSuccess(pw);
+        resetForm();
       } else {
         setError("Invalid password. Please try again.");
       }
     } catch {
-      setError("Login failed. Please try again.");
+      setError("Invalid password. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -453,7 +613,10 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v) onClose();
+        if (!v) {
+          resetForm();
+          onClose();
+        }
       }}
     >
       <DialogContent
@@ -496,18 +659,21 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
           <div className="flex gap-2">
             <Button
               onClick={handleLogin}
-              disabled={adminLogin.isPending || !pw}
+              disabled={loading || !pw}
               className="flex-1 bg-primary text-primary-foreground hover:opacity-90"
               data-ocid="admin.submit_button"
             >
-              {adminLogin.isPending ? (
+              {loading ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : null}
               Login
             </Button>
             <Button
               variant="ghost"
-              onClick={onClose}
+              onClick={() => {
+                resetForm();
+                onClose();
+              }}
               className="flex-1"
               data-ocid="admin.cancel_button"
             >
@@ -529,6 +695,8 @@ export default function App() {
   const qc = useQueryClient();
 
   const liveBalances = useGetLiveBalances();
+  const fundBalance = useGetFundBalance();
+  const neuronStake = useGetNeuronStake();
   const manualBalances = useGetManualBalances();
   const announcements = useGetAnnouncements();
 
@@ -538,6 +706,8 @@ export default function App() {
     qc.invalidateQueries({ queryKey: ["liveBalances"] });
     qc.invalidateQueries({ queryKey: ["manualBalances"] });
     qc.invalidateQueries({ queryKey: ["announcements"] });
+    qc.invalidateQueries({ queryKey: ["fundBalance"] });
+    qc.invalidateQueries({ queryKey: ["neuronStake"] });
     toast.success("Refreshing balances...");
   }
 
@@ -550,6 +720,17 @@ export default function App() {
 
   const icpLive = liveBalances.data?.icp ?? null;
   const bittyLive = liveBalances.data?.bitty ?? null;
+  const fundLive = fundBalance.data ?? null;
+
+  // Manual overrides: if set, show manual; otherwise show live
+  const manualIcp = manualBalances.data?.icp ?? "";
+  const manualBitty = manualBalances.data?.bitty ?? "";
+  const manualFund = manualBalances.data?.fund ?? "";
+
+  // Fund display: manual takes priority, then live
+  const fundHasManual = manualFund.trim() !== "";
+  const fundHasLive = fundLive !== null;
+
   const sortedAnnouncements = [...(announcements.data ?? [])].sort((a, b) =>
     b.timestamp > a.timestamp ? 1 : -1,
   );
@@ -561,7 +742,7 @@ export default function App() {
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
       />
-      {/* Overlay — slightly lighter so more of the photo shows through */}
+      {/* Overlay */}
       <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.65)] via-[oklch(0.10_0.025_252/0.60)] to-[oklch(0.05_0.01_252/0.75)]" />
 
       <Toaster position="top-right" richColors />
@@ -583,7 +764,18 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {isAdmin ? (
+              {!isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-primary/40 text-icp hover:bg-primary/10"
+                  onClick={() => setLoginOpen(true)}
+                  data-ocid="admin.login_button"
+                >
+                  <ShieldCheck className="h-4 w-4 mr-1" /> Admin Login
+                </Button>
+              )}
+              {isAdmin && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -592,16 +784,6 @@ export default function App() {
                   data-ocid="admin.open_modal_button"
                 >
                   <ShieldCheck className="h-4 w-4 mr-1" /> Admin
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-border/40 text-muted-foreground hover:text-foreground"
-                  onClick={() => setLoginOpen(true)}
-                  data-ocid="admin.login_button"
-                >
-                  Admin Login
                 </Button>
               )}
             </div>
@@ -649,31 +831,41 @@ export default function App() {
                 token="$ICP Balance"
                 symbol="Internet Computer"
                 liveValue={icpLive}
-                manualValue={manualBalances.data?.icp}
-                isLive={icpLive !== null}
-                isLoading={liveBalances.isLoading}
-                variant="icp"
+                manualValue={manualIcp}
+                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isAdmin={isAdmin}
               />
               <BalanceCard
                 token="$BITTYICP Balance"
                 symbol="BITTY on ICP"
                 liveValue={bittyLive}
-                manualValue={manualBalances.data?.bitty}
-                isLive={bittyLive !== null}
-                isLoading={liveBalances.isLoading}
-                variant="bitty"
+                manualValue={manualBitty}
+                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isAdmin={isAdmin}
               />
             </div>
 
-            {liveBalances.isError && (
-              <p
-                className="text-xs text-yellow-400/70 mt-3 text-center"
-                data-ocid="balances.error_state"
-              >
-                <AlertTriangle className="h-3 w-3 inline mr-1" />
-                Live query failed — showing manual balances
+            {/* Copyable IDs */}
+            <div className="mt-5 glass-card rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
+                Treasury IDs
               </p>
-            )}
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">
+                  Wallet Address
+                </p>
+                <CopyableId value={TREASURY_WALLET} label="Wallet Address" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">
+                  $BITTYICP Canister ID
+                </p>
+                <CopyableId
+                  value={BITTYICP_CANISTER}
+                  label="BITTYICP Canister ID"
+                />
+              </div>
+            </div>
           </section>
 
           {/* NNS Public Neuron Section */}
@@ -685,32 +877,173 @@ export default function App() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6"
+              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
               data-ocid="neuron.card"
             >
+              {/* Neuron ID row */}
               <div className="flex items-start gap-4">
                 <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
                   <Brain className="h-6 w-6 text-gold" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-                      Neuron ID
-                    </span>
+                  <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                    Neuron ID
+                  </p>
+                  <CopyableId value={NEURON_ID} label="Neuron ID" />
+                </div>
+              </div>
+
+              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+              {/* ICP Stake */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
+                    ICP Staked
+                  </p>
+                  {neuronStake.isLoading ? (
                     <Badge
                       variant="outline"
-                      className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold shrink-0"
+                      className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
                     >
-                      <Clock className="h-3 w-3 mr-1" /> Pending
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
                     </Badge>
-                  </div>
-                  <p className="text-2xl font-heading font-bold text-gold italic opacity-70">
-                    Coming soon
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                    This neuron will stake ICP on behalf of the treasury
-                  </p>
+                  ) : neuronStake.data !== null &&
+                    neuronStake.data !== undefined ? (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
+                    >
+                      <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
+                    </Badge>
+                  ) : null}
                 </div>
+                <div className="text-3xl font-heading font-bold text-gold tabular-nums">
+                  {neuronStake.isLoading ? (
+                    <span className="opacity-40">—</span>
+                  ) : neuronStake.data !== null &&
+                    neuronStake.data !== undefined ? (
+                    neuronStake.data.toLocaleString("en-US", {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 4,
+                    })
+                  ) : (
+                    <span className="opacity-40 text-xl">Unavailable</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground font-mono mt-1">
+                  ICP
+                </p>
+              </div>
+
+              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                This neuron stakes ICP on behalf of the treasury through the
+                Network Nervous System (NNS), earning staking rewards that grow
+                the bank over time.
+              </p>
+            </motion.div>
+          </section>
+
+          {/* Future Investment Fund Section */}
+          <section data-ocid="fund.section">
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              BITTY ON ICP Future Investment Fund
+            </h2>
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
+              data-ocid="fund.card"
+            >
+              {/* Icon + balance */}
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                  <TrendingUp className="h-6 w-6 text-gold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
+                      $BITTYICP Balance
+                    </span>
+                    {fundBalance.isLoading && manualBalances.isLoading ? (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
+                      >
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />{" "}
+                        Loading
+                      </Badge>
+                    ) : fundHasManual && isAdmin ? (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-yellow-500/40 text-yellow-400"
+                      >
+                        <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
+                      </Badge>
+                    ) : fundHasManual || fundHasLive ? (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
+                      >
+                        <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
+                    {fundBalance.isLoading && manualBalances.isLoading ? (
+                      <span className="opacity-40">—</span>
+                    ) : fundHasManual ? (
+                      manualFund
+                    ) : fundHasLive ? (
+                      formatBalance(fundLive!)
+                    ) : (
+                      <span className="opacity-40 text-xl">Unavailable</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono mt-1">
+                    BITTY on ICP
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The future investment fund is a fully funded wallet with{" "}
+                <span className="text-gold font-semibold">$BITTYICP</span> that
+                will remain unavailable until{" "}
+                <span className="text-gold font-semibold">
+                  &ldquo;BITTY ON ICP&rdquo;
+                </span>{" "}
+                FDV is at a minimum{" "}
+                <span className="text-gold font-semibold">
+                  $2,500,000.00 USD
+                </span>
+                . At this point the fund will be sold for $ICP and re-invested
+                into the{" "}
+                <span className="text-gold font-semibold">
+                  &ldquo;BITTY ICP BANK&rdquo;
+                </span>{" "}
+                to exponentially grow the daily dividends that the community
+                will be able to vote on its usage every month.{" "}
+                <span className="text-muted-foreground/60 italic">
+                  (Due to change to every week at that point)
+                </span>
+              </p>
+
+              {/* Fund wallet address — copyable */}
+              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                  Fund Wallet Address
+                </p>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Copy this ID to verify the fund on-chain
+                </p>
+                <CopyableId value={FUND_WALLET} label="Fund Wallet Address" />
               </div>
             </motion.div>
           </section>
