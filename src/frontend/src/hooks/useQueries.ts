@@ -1,6 +1,7 @@
 import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useActor, waitForActor } from "./useActor";
+import { waitForActor } from "./actorCache";
+import { useActor } from "./useActor";
 
 const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";

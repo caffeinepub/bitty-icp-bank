@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { setCachedActor } from "@/hooks/actorCache";
 import { useActor } from "@/hooks/useActor";
 import {
   type Announcement,
@@ -46,6 +47,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
+import VotingPage from "./VotingPage";
 
 const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -238,15 +240,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const [manualIcp, setManualIcp] = useState("");
   const [manualBitty, setManualBitty] = useState("");
   const [manualFund, setManualFund] = useState("");
-  const [manualBittyPrice, setManualBittyPrice] = useState("");
 
   const addAnn = useAddAnnouncement();
   const updateAnn = useUpdateAnnouncement();
   const deleteAnn = useDeleteAnnouncement();
   const setManual = useSetManualBalances();
   const setManualFundBalance = useSetManualFundBalance();
-  const setManualBittyPriceMut = useSetManualBittyPrice();
-  const { actor: adminActor } = useActor();
+  const setManualBittyPriceMutation = useSetManualBittyPrice();
+  const [manualBittyPrice, setManualBittyPrice] = useState("");
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -257,7 +258,6 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       title: annTitle.trim(),
       body: annBody.trim(),
-      actor: adminActor,
     });
     toast.success("Announcement posted!");
     setAnnTitle("");
@@ -274,14 +274,13 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       id,
       title: editTitle.trim(),
       body: editBody.trim(),
-      actor: adminActor,
     });
     toast.success("Announcement updated!");
     setEditingId(null);
   }
 
   async function handleDeleteAnnouncement(id: bigint) {
-    await deleteAnn.mutateAsync({ password, id, actor: adminActor });
+    await deleteAnn.mutateAsync({ password, id });
     toast.success("Announcement deleted");
   }
 
@@ -294,7 +293,6 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       icp: manualIcp.trim(),
       bitty: manualBitty.trim(),
-      actor: adminActor,
     });
     toast.success("Treasury manual balances saved!");
     setManualIcp("");
@@ -302,12 +300,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   }
 
   async function handleClearTreasuryManual() {
-    await setManual.mutateAsync({
-      password,
-      icp: "",
-      bitty: "",
-      actor: adminActor,
-    });
+    await setManual.mutateAsync({ password, icp: "", bitty: "" });
     toast.success("Treasury manual balances cleared — live values will show");
     setManualIcp("");
     setManualBitty("");
@@ -321,20 +314,50 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     await setManualFundBalance.mutateAsync({
       password,
       fund: manualFund.trim(),
-      actor: adminActor,
     });
     toast.success("Fund manual balance saved!");
     setManualFund("");
   }
 
   async function handleClearFundManual() {
-    await setManualFundBalance.mutateAsync({
-      password,
-      fund: "",
-      actor: adminActor,
-    });
+    await setManualFundBalance.mutateAsync({ password, fund: "" });
     toast.success("Fund manual balance cleared — live value will show");
     setManualFund("");
+  }
+
+  async function handleSaveBittyPrice() {
+    const trimmed = manualBittyPrice.trim();
+    if (!trimmed) {
+      toast.error("Enter a price");
+      return;
+    }
+    const num = Number.parseFloat(trimmed);
+    if (Number.isNaN(num) || num <= 0) {
+      toast.error("Enter a valid positive number");
+      return;
+    }
+    try {
+      await setManualBittyPriceMutation.mutateAsync({
+        password,
+        price: trimmed,
+      });
+      toast.success("BITTYICP price saved!");
+      setManualBittyPrice("");
+    } catch {
+      toast.error("Failed to save price");
+    }
+  }
+
+  async function handleClearBittyPrice() {
+    try {
+      await setManualBittyPriceMutation.mutateAsync({ password, price: "" });
+      toast.success(
+        "BITTYICP price cleared — live price will be used if available",
+      );
+      setManualBittyPrice("");
+    } catch {
+      toast.error("Failed to clear price");
+    }
   }
 
   return (
@@ -518,20 +541,19 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
           BITTYICP Price Override
         </h3>
         <p className="text-xs text-muted-foreground">
-          Set the USD price per 1 BITTYICP token. Used as fallback if ICPSwap
-          live price fails. If ICPSwap is working, the live price always takes
-          priority.
+          Set the manual price per $BITTYICP in USD. Live ICPSwap price takes
+          priority if available — this is used as fallback.
         </p>
         <div className="space-y-1">
           <label
             htmlFor="manual-bitty-price"
             className="text-xs text-muted-foreground"
           >
-            Price per BITTYICP (USD)
+            Price per $BITTYICP (USD)
           </label>
           <Input
             id="manual-bitty-price"
-            placeholder="e.g. 0.0042"
+            placeholder="e.g. 0.00042"
             value={manualBittyPrice}
             onChange={(e) => setManualBittyPrice(e.target.value)}
             className="bg-secondary/50 border-border font-mono"
@@ -540,43 +562,20 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={async () => {
-              try {
-                await setManualBittyPriceMut.mutateAsync({
-                  password,
-                  price: manualBittyPrice.trim(),
-                  actor: adminActor,
-                });
-                toast.success("BITTYICP price saved");
-                setManualBittyPrice("");
-              } catch {
-                toast.error("Failed to save price");
-              }
-            }}
-            disabled={setManualBittyPriceMut.isPending}
+            onClick={handleSaveBittyPrice}
+            disabled={setManualBittyPriceMutation.isPending}
             variant="outline"
             className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
             data-ocid="manual.bitty_price.save_button"
           >
-            {setManualBittyPriceMut.isPending ? (
+            {setManualBittyPriceMutation.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : null}
             Save Price
           </Button>
           <Button
-            onClick={async () => {
-              try {
-                await setManualBittyPriceMut.mutateAsync({
-                  password,
-                  price: "",
-                  actor: adminActor,
-                });
-                toast.success("BITTYICP price cleared");
-              } catch {
-                toast.error("Failed to clear price");
-              }
-            }}
-            disabled={setManualBittyPriceMut.isPending}
+            onClick={handleClearBittyPrice}
+            disabled={setManualBittyPriceMutation.isPending}
             variant="ghost"
             className="text-muted-foreground hover:text-foreground flex-1"
             data-ocid="manual.bitty_price.clear_button"
@@ -814,6 +813,9 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
 
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<"dashboard" | "voting">(
+    "dashboard",
+  );
   const [adminPassword, setAdminPassword] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -821,6 +823,9 @@ export default function App() {
   const [tapCount, setTapCount] = useState(0);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const qc = useQueryClient();
+
+  const { actor } = useActor();
+  if (actor) setCachedActor(actor);
 
   const liveBalances = useGetLiveBalances();
   const fundBalance = useGetFundBalance();
@@ -878,11 +883,7 @@ export default function App() {
   const fundHasLive = fundLive !== null;
 
   const icpUsd = tokenPrices.data?.icpUsd ?? null;
-  const manualBittyPriceUsd = manualBalances.data?.bittyPriceUsd ?? "";
-  const liveBittyUsd = tokenPrices.data?.bittyUsd ?? null;
-  const bittyUsd =
-    liveBittyUsd ??
-    (manualBittyPriceUsd.trim() !== "" ? Number(manualBittyPriceUsd) : null);
+  const bittyUsd = tokenPrices.data?.bittyUsd ?? null;
 
   // Neuron stake USD
   const neuronStakeNum = neuronStake.data ?? null;
@@ -896,21 +897,12 @@ export default function App() {
       ? fundBalanceNum * bittyUsd
       : null;
 
-  // Total treasury USD value (ICP + Neuron + BITTYICP + Fund)
+  // Total ICP treasury USD value (ICP treasury + NNS neuron stake)
   const icpTreasuryNum = resolveBalanceNumber(manualIcp, icpLive);
   const neuronIcpNum = neuronStake.data ?? null;
-  const bittyTreasuryNum = resolveBalanceNumber(manualBitty, bittyLive);
-  const icpComponentUsd =
+  const totalIcpUsd =
     icpUsd !== null && icpTreasuryNum !== null && neuronIcpNum !== null
       ? (icpTreasuryNum + neuronIcpNum) * icpUsd
-      : null;
-  const bittyComponentUsd =
-    bittyUsd !== null && bittyTreasuryNum !== null && fundBalanceNum !== null
-      ? (bittyTreasuryNum + fundBalanceNum) * bittyUsd
-      : null;
-  const totalAllUsd =
-    icpComponentUsd !== null || bittyComponentUsd !== null
-      ? (icpComponentUsd ?? 0) + (bittyComponentUsd ?? 0)
       : null;
   const totalIcpLoading =
     (liveBalances.isLoading && manualBalances.isLoading) ||
@@ -921,6 +913,16 @@ export default function App() {
     b.timestamp > a.timestamp ? 1 : -1,
   );
 
+  if (currentPage === "voting") {
+    return (
+      <VotingPage
+        onBack={() => setCurrentPage("dashboard")}
+        isAdmin={isAdmin}
+        adminPassword={ADMIN_PASSWORD}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen relative overflow-x-hidden font-body">
       {/* Background */}
@@ -929,7 +931,7 @@ export default function App() {
         style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
       />
       {/* Overlay */}
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.65)] via-[oklch(0.10_0.025_252/0.60)] to-[oklch(0.05_0.01_252/0.75)]" />
+      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.40)] via-[oklch(0.10_0.025_252/0.35)] to-[oklch(0.05_0.01_252/0.55)]" />
 
       <Toaster position="top-right" richColors />
 
@@ -957,14 +959,13 @@ export default function App() {
             </button>
             <div className="flex items-center gap-2">
               <motion.button
-                onClick={() => setHowItWorksOpen(true)}
+                onClick={() => setCurrentPage("voting")}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.97 }}
                 className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-xs tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
-                data-ocid="how_it_works.open_modal_button"
+                data-ocid="vote_page.link"
               >
-                <HelpCircle className="h-4 w-4" />
-                How It Works
+                Vote
               </motion.button>
               {isAdmin && (
                 <Button
@@ -982,7 +983,21 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
-          {/* Total Treasury Value Banner */}
+          {/* HOW IT WORKS Button */}
+          <div className="flex justify-center">
+            <motion.button
+              onClick={() => setHowItWorksOpen(true)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-sm tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
+              data-ocid="how_it_works.open_modal_button"
+            >
+              <HelpCircle className="h-4 w-4" />
+              How It Works
+            </motion.button>
+          </div>
+
+          {/* Total ICP Treasury Value Banner */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -993,10 +1008,10 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Total Treasury Value
+                  Total ICP Treasury Value
                 </p>
                 <p className="text-xs text-muted-foreground/60">
-                  ICP Treasury + Neuron + BITTYICP + Fund
+                  ICP Treasury + NNS Neuron Stake
                 </p>
               </div>
               <div className="text-right">
@@ -1007,9 +1022,9 @@ export default function App() {
                       —
                     </span>
                   </div>
-                ) : totalAllUsd !== null ? (
+                ) : totalIcpUsd !== null ? (
                   <span className="text-3xl font-heading font-bold text-gold tabular-nums">
-                    {formatUsd(totalAllUsd)}
+                    {formatUsd(totalIcpUsd)}
                   </span>
                 ) : (
                   <span className="text-2xl font-heading font-bold text-gold/40">

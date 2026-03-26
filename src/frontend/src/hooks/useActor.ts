@@ -2,26 +2,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { backendInterface } from "../backend";
 import { createActorWithConfig } from "../config";
+import { getSecretParameter } from "../utils/urlParams";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const ACTOR_QUERY_KEY = "actor";
-
-// Module-level ref so mutations can always access the latest actor
-let _currentActor: backendInterface | null = null;
-export function getCurrentActor() {
-  return _currentActor;
-}
-
-// Wait up to 5 seconds for the actor to become available
-export async function waitForActor(): Promise<backendInterface> {
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    if (_currentActor) return _currentActor;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error("Backend not ready. Please try again in a moment.");
-}
-
 export function useActor() {
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
@@ -42,6 +26,8 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
+      const adminToken = getSecretParameter("caffeineAdminToken") || "";
+      await actor._initializeAccessControlWithSecret(adminToken);
       return actor;
     },
     // Only refetch when identity changes
@@ -49,12 +35,6 @@ export function useActor() {
     // This will cause the actor to be recreated when the identity changes
     enabled: true,
   });
-
-  const actor = actorQuery.data || null;
-  // Keep the module-level ref in sync
-  if (actor) {
-    _currentActor = actor;
-  }
 
   // When the actor changes, invalidate dependent queries
   useEffect(() => {
@@ -73,7 +53,7 @@ export function useActor() {
   }, [actorQuery.data, queryClient]);
 
   return {
-    actor,
+    actor: actorQuery.data || null,
     isFetching: actorQuery.isFetching,
   };
 }
