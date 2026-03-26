@@ -1,6 +1,6 @@
 import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCurrentActor, useActor } from "./useActor";
+import { useActor, waitForActor } from "./useActor";
 
 const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -14,14 +14,6 @@ export interface Announcement {
   title: string;
   body: string;
   timestamp: bigint;
-}
-
-// Helper: get actor at call time (not from stale closure)
-function requireActor() {
-  const actor = getCurrentActor();
-  if (!actor)
-    throw new Error("Backend not ready. Please wait a moment and try again.");
-  return actor as any;
 }
 
 // Fetch ICP and BITTYICP balances directly from ledger canisters (frontend agent)
@@ -91,7 +83,7 @@ export function useGetAnnouncements() {
 export function useAdminLogin() {
   return useMutation<boolean, Error, { password: string }>({
     mutationFn: async ({ password }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       if (!a.adminLogin) throw new Error("Not available");
       return await a.adminLogin(password);
     },
@@ -106,7 +98,7 @@ export function useAddAnnouncement() {
     { password: string; title: string; body: string }
   >({
     mutationFn: async ({ password, title, body }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       const res = await a.addAnnouncement(password, title, body);
       return Array.isArray(res) && res.length > 0 ? res[0] : null;
     },
@@ -122,7 +114,7 @@ export function useUpdateAnnouncement() {
     { password: string; id: bigint; title: string; body: string }
   >({
     mutationFn: async ({ password, id, title, body }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       return await a.updateAnnouncement(password, id, title, body);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -133,7 +125,7 @@ export function useDeleteAnnouncement() {
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; id: bigint }>({
     mutationFn: async ({ password, id }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       return await a.deleteAnnouncement(password, id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -148,7 +140,7 @@ export function useSetManualBalances() {
     { password: string; icp: string; bitty: string }
   >({
     mutationFn: async ({ password, icp, bitty }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       return await a.setManualBalances(password, icp, bitty);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -159,7 +151,7 @@ export function useSetManualFundBalance() {
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; fund: string }>({
     mutationFn: async ({ password, fund }) => {
-      const a = requireActor();
+      const a = (await waitForActor()) as any;
       return await a.setManualFundBalance(password, fund);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -170,8 +162,10 @@ export function useSetManualBittyPrice() {
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; price: string }>({
     mutationFn: async ({ password, price }) => {
-      const a = requireActor();
-      return await a.setManualBittyPrice(password, price);
+      const a = (await waitForActor()) as any;
+      const result = await a.setManualBittyPrice(password, price);
+      if (result === false) throw new Error("Backend rejected the save.");
+      return result;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
   });
@@ -230,7 +224,6 @@ export function useTokenPrices() {
         );
         if (swapRes.ok) {
           const swapData = await swapRes.json();
-          // ICPSwap returns price in USD directly
           const price =
             swapData?.data?.priceUSD ??
             swapData?.priceUSD ??
@@ -271,13 +264,11 @@ export function useTokenPrices() {
       // Last fallback: derive BITTYICP USD from ICPSwap pair ratio * ICP price
       if (bittyUsd === null && icpUsd !== null) {
         try {
-          // Use ICPSwap's pool token price endpoint (ICP → BITTYICP)
           const pairRes = await fetch(
             `https://api.icpswap.com/v3/swap/pool/tokens?token0=ryjl3-tyaaa-aaaaa-aaaba-cai&token1=${BITTYICP_CANISTER}`,
           );
           if (pairRes.ok) {
             const pairData = await pairRes.json();
-            // token1Price = BITTYICP per 1 ICP
             const bittyPerIcp =
               pairData?.data?.token1Price ?? pairData?.token1Price ?? null;
             if (bittyPerIcp !== null && Number(bittyPerIcp) > 0) {

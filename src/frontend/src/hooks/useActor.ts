@@ -12,6 +12,16 @@ export function getCurrentActor() {
   return _currentActor;
 }
 
+// Wait up to 5 seconds for the actor to become available
+export async function waitForActor(): Promise<backendInterface> {
+  const start = Date.now();
+  while (Date.now() - start < 5000) {
+    if (_currentActor) return _currentActor;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("Backend not ready. Please try again in a moment.");
+}
+
 export function useActor() {
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
