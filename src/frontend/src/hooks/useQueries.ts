@@ -16,7 +16,6 @@ export interface Announcement {
   timestamp: bigint;
 }
 
-// Fetch ICP and BITTYICP balances directly from ledger canisters (frontend agent)
 export function useGetLiveBalances() {
   return useQuery<{ icp: bigint | null; bitty: bigint | null }>({
     queryKey: ["liveBalances"],
@@ -32,7 +31,6 @@ export function useGetLiveBalances() {
   });
 }
 
-// Fetch fund balance directly from BITTYICP ledger (frontend agent)
 export function useGetFundBalance() {
   return useQuery<bigint | null>({
     queryKey: ["fundBalance"],
@@ -95,10 +93,10 @@ export function useAddAnnouncement() {
   return useMutation<
     Announcement | null,
     Error,
-    { password: string; title: string; body: string }
+    { password: string; title: string; body: string; actor?: unknown }
   >({
-    mutationFn: async ({ password, title, body }) => {
-      const a = (await waitForActor()) as any;
+    mutationFn: async ({ password, title, body, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
       const res = await a.addAnnouncement(password, title, body);
       return Array.isArray(res) && res.length > 0 ? res[0] : null;
     },
@@ -111,10 +109,16 @@ export function useUpdateAnnouncement() {
   return useMutation<
     boolean,
     Error,
-    { password: string; id: bigint; title: string; body: string }
+    {
+      password: string;
+      id: bigint;
+      title: string;
+      body: string;
+      actor?: unknown;
+    }
   >({
-    mutationFn: async ({ password, id, title, body }) => {
-      const a = (await waitForActor()) as any;
+    mutationFn: async ({ password, id, title, body, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
       return await a.updateAnnouncement(password, id, title, body);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -123,9 +127,13 @@ export function useUpdateAnnouncement() {
 
 export function useDeleteAnnouncement() {
   const qc = useQueryClient();
-  return useMutation<boolean, Error, { password: string; id: bigint }>({
-    mutationFn: async ({ password, id }) => {
-      const a = (await waitForActor()) as any;
+  return useMutation<
+    boolean,
+    Error,
+    { password: string; id: bigint; actor?: unknown }
+  >({
+    mutationFn: async ({ password, id, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
       return await a.deleteAnnouncement(password, id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -137,10 +145,10 @@ export function useSetManualBalances() {
   return useMutation<
     boolean,
     Error,
-    { password: string; icp: string; bitty: string }
+    { password: string; icp: string; bitty: string; actor?: unknown }
   >({
-    mutationFn: async ({ password, icp, bitty }) => {
-      const a = (await waitForActor()) as any;
+    mutationFn: async ({ password, icp, bitty, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
       return await a.setManualBalances(password, icp, bitty);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -149,9 +157,13 @@ export function useSetManualBalances() {
 
 export function useSetManualFundBalance() {
   const qc = useQueryClient();
-  return useMutation<boolean, Error, { password: string; fund: string }>({
-    mutationFn: async ({ password, fund }) => {
-      const a = (await waitForActor()) as any;
+  return useMutation<
+    boolean,
+    Error,
+    { password: string; fund: string; actor?: unknown }
+  >({
+    mutationFn: async ({ password, fund, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
       return await a.setManualFundBalance(password, fund);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -160,11 +172,18 @@ export function useSetManualFundBalance() {
 
 export function useSetManualBittyPrice() {
   const qc = useQueryClient();
-  return useMutation<boolean, Error, { password: string; price: string }>({
-    mutationFn: async ({ password, price }) => {
-      const a = (await waitForActor()) as any;
+  return useMutation<
+    boolean,
+    Error,
+    { password: string; price: string; actor?: unknown }
+  >({
+    mutationFn: async ({ password, price, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
+      if (!a.setManualBittyPrice)
+        throw new Error("setManualBittyPrice not found on actor");
       const result = await a.setManualBittyPrice(password, price);
-      if (result === false) throw new Error("Backend rejected the save.");
+      if (result === false)
+        throw new Error("Backend rejected — password mismatch.");
       return result;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -197,12 +216,10 @@ export function useGetNeuronStake() {
   });
 }
 
-// Fetch live token prices: ICP/USD from CoinGecko, BITTYICP/USD from ICPSwap
 export function useTokenPrices() {
   return useQuery<{ icpUsd: number | null; bittyUsd: number | null }>({
     queryKey: ["tokenPrices"],
     queryFn: async () => {
-      // Fetch ICP/USD price from CoinGecko
       let icpUsd: number | null = null;
       try {
         const cgRes = await fetch(
@@ -216,7 +233,6 @@ export function useTokenPrices() {
         icpUsd = null;
       }
 
-      // Fetch BITTYICP price from ICPSwap info API
       let bittyUsd: number | null = null;
       try {
         const swapRes = await fetch(
@@ -230,15 +246,12 @@ export function useTokenPrices() {
             swapData?.data?.price ??
             swapData?.price ??
             null;
-          if (price !== null) {
-            bittyUsd = Number(price);
-          }
+          if (price !== null) bittyUsd = Number(price);
         }
       } catch {
         bittyUsd = null;
       }
 
-      // Fallback: try ICPSwap v3 info endpoint
       if (bittyUsd === null) {
         try {
           const swapRes2 = await fetch(
@@ -252,16 +265,13 @@ export function useTokenPrices() {
               swapData2?.data?.price ??
               swapData2?.price ??
               null;
-            if (price !== null) {
-              bittyUsd = Number(price);
-            }
+            if (price !== null) bittyUsd = Number(price);
           }
         } catch {
           bittyUsd = null;
         }
       }
 
-      // Last fallback: derive BITTYICP USD from ICPSwap pair ratio * ICP price
       if (bittyUsd === null && icpUsd !== null) {
         try {
           const pairRes = await fetch(

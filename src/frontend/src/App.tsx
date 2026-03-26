@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useActor } from "@/hooks/useActor";
 import {
   type Announcement,
   useAddAnnouncement,
@@ -245,6 +246,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const setManual = useSetManualBalances();
   const setManualFundBalance = useSetManualFundBalance();
   const setManualBittyPriceMut = useSetManualBittyPrice();
+  const { actor: adminActor } = useActor();
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -255,6 +257,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       title: annTitle.trim(),
       body: annBody.trim(),
+      actor: adminActor,
     });
     toast.success("Announcement posted!");
     setAnnTitle("");
@@ -271,13 +274,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       id,
       title: editTitle.trim(),
       body: editBody.trim(),
+      actor: adminActor,
     });
     toast.success("Announcement updated!");
     setEditingId(null);
   }
 
   async function handleDeleteAnnouncement(id: bigint) {
-    await deleteAnn.mutateAsync({ password, id });
+    await deleteAnn.mutateAsync({ password, id, actor: adminActor });
     toast.success("Announcement deleted");
   }
 
@@ -290,6 +294,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       icp: manualIcp.trim(),
       bitty: manualBitty.trim(),
+      actor: adminActor,
     });
     toast.success("Treasury manual balances saved!");
     setManualIcp("");
@@ -297,7 +302,12 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   }
 
   async function handleClearTreasuryManual() {
-    await setManual.mutateAsync({ password, icp: "", bitty: "" });
+    await setManual.mutateAsync({
+      password,
+      icp: "",
+      bitty: "",
+      actor: adminActor,
+    });
     toast.success("Treasury manual balances cleared — live values will show");
     setManualIcp("");
     setManualBitty("");
@@ -311,13 +321,18 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     await setManualFundBalance.mutateAsync({
       password,
       fund: manualFund.trim(),
+      actor: adminActor,
     });
     toast.success("Fund manual balance saved!");
     setManualFund("");
   }
 
   async function handleClearFundManual() {
-    await setManualFundBalance.mutateAsync({ password, fund: "" });
+    await setManualFundBalance.mutateAsync({
+      password,
+      fund: "",
+      actor: adminActor,
+    });
     toast.success("Fund manual balance cleared — live value will show");
     setManualFund("");
   }
@@ -530,6 +545,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
                 await setManualBittyPriceMut.mutateAsync({
                   password,
                   price: manualBittyPrice.trim(),
+                  actor: adminActor,
                 });
                 toast.success("BITTYICP price saved");
                 setManualBittyPrice("");
@@ -553,6 +569,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
                 await setManualBittyPriceMut.mutateAsync({
                   password,
                   price: "",
+                  actor: adminActor,
                 });
                 toast.success("BITTYICP price cleared");
               } catch {
