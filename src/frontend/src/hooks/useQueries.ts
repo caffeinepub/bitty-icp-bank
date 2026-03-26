@@ -1,6 +1,6 @@
 import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useActor } from "./useActor";
+import { getCurrentActor, useActor } from "./useActor";
 
 const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -14,6 +14,14 @@ export interface Announcement {
   title: string;
   body: string;
   timestamp: bigint;
+}
+
+// Helper: get actor at call time (not from stale closure)
+function requireActor() {
+  const actor = getCurrentActor();
+  if (!actor)
+    throw new Error("Backend not ready. Please wait a moment and try again.");
+  return actor as any;
 }
 
 // Fetch ICP and BITTYICP balances directly from ledger canisters (frontend agent)
@@ -81,11 +89,9 @@ export function useGetAnnouncements() {
 }
 
 export function useAdminLogin() {
-  const { actor } = useActor();
   return useMutation<boolean, Error, { password: string }>({
     mutationFn: async ({ password }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       if (!a.adminLogin) throw new Error("Not available");
       return await a.adminLogin(password);
     },
@@ -93,7 +99,6 @@ export function useAdminLogin() {
 }
 
 export function useAddAnnouncement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<
     Announcement | null,
@@ -101,8 +106,7 @@ export function useAddAnnouncement() {
     { password: string; title: string; body: string }
   >({
     mutationFn: async ({ password, title, body }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       const res = await a.addAnnouncement(password, title, body);
       return Array.isArray(res) && res.length > 0 ? res[0] : null;
     },
@@ -111,7 +115,6 @@ export function useAddAnnouncement() {
 }
 
 export function useUpdateAnnouncement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<
     boolean,
@@ -119,8 +122,7 @@ export function useUpdateAnnouncement() {
     { password: string; id: bigint; title: string; body: string }
   >({
     mutationFn: async ({ password, id, title, body }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       return await a.updateAnnouncement(password, id, title, body);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -128,12 +130,10 @@ export function useUpdateAnnouncement() {
 }
 
 export function useDeleteAnnouncement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; id: bigint }>({
     mutationFn: async ({ password, id }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       return await a.deleteAnnouncement(password, id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["announcements"] }),
@@ -141,7 +141,6 @@ export function useDeleteAnnouncement() {
 }
 
 export function useSetManualBalances() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<
     boolean,
@@ -149,8 +148,7 @@ export function useSetManualBalances() {
     { password: string; icp: string; bitty: string }
   >({
     mutationFn: async ({ password, icp, bitty }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       return await a.setManualBalances(password, icp, bitty);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -158,12 +156,10 @@ export function useSetManualBalances() {
 }
 
 export function useSetManualFundBalance() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; fund: string }>({
     mutationFn: async ({ password, fund }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       return await a.setManualFundBalance(password, fund);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
@@ -171,12 +167,10 @@ export function useSetManualFundBalance() {
 }
 
 export function useSetManualBittyPrice() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation<boolean, Error, { password: string; price: string }>({
     mutationFn: async ({ password, price }) => {
-      if (!actor) throw new Error("No actor");
-      const a = actor as any;
+      const a = requireActor();
       return await a.setManualBittyPrice(password, price);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),

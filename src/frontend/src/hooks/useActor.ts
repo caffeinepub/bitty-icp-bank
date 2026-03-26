@@ -5,6 +5,13 @@ import { createActorWithConfig } from "../config";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const ACTOR_QUERY_KEY = "actor";
+
+// Module-level ref so mutations can always access the latest actor
+let _currentActor: backendInterface | null = null;
+export function getCurrentActor() {
+  return _currentActor;
+}
+
 export function useActor() {
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
@@ -33,6 +40,12 @@ export function useActor() {
     enabled: true,
   });
 
+  const actor = actorQuery.data || null;
+  // Keep the module-level ref in sync
+  if (actor) {
+    _currentActor = actor;
+  }
+
   // When the actor changes, invalidate dependent queries
   useEffect(() => {
     if (actorQuery.data) {
@@ -50,7 +63,7 @@ export function useActor() {
   }, [actorQuery.data, queryClient]);
 
   return {
-    actor: actorQuery.data || null,
+    actor,
     isFetching: actorQuery.isFetching,
   };
 }
