@@ -22,6 +22,7 @@ actor {
   stable var manualICP : Text = "";
   stable var manualBITTY : Text = "";
   stable var manualFund : Text = "";
+  stable var manualBittyPriceUSD : Text = "";
 
   // Kept for upgrade compatibility with previous version
   stable var WALLET_PRINCIPAL : Text = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -43,8 +44,8 @@ actor {
 
   // ---- Manual Balances ----
 
-  public query func getManualBalances() : async { icp : Text; bitty : Text; fund : Text } {
-    { icp = manualICP; bitty = manualBITTY; fund = manualFund }
+  public query func getManualBalances() : async { icp : Text; bitty : Text; fund : Text; bittyPriceUsd : Text } {
+    { icp = manualICP; bitty = manualBITTY; fund = manualFund; bittyPriceUsd = manualBittyPriceUSD }
   };
 
   public func setManualBalances(password : Text, icp : Text, bitty : Text) : async Bool {
@@ -57,6 +58,12 @@ actor {
   public func setManualFundBalance(password : Text, fund : Text) : async Bool {
     if (not isAdmin(password)) return false;
     manualFund := fund;
+    true
+  };
+
+  public func setManualBittyPrice(password : Text, price : Text) : async Bool {
+    if (not isAdmin(password)) return false;
+    manualBittyPriceUSD := price;
     true
   };
 

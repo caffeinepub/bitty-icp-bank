@@ -19,6 +19,7 @@ import {
   useGetManualBalances,
   useGetNeuronStake,
   useSetManualBalances,
+  useSetManualBittyPrice,
   useSetManualFundBalance,
   useTokenPrices,
   useUpdateAnnouncement,
@@ -236,12 +237,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const [manualIcp, setManualIcp] = useState("");
   const [manualBitty, setManualBitty] = useState("");
   const [manualFund, setManualFund] = useState("");
+  const [manualBittyPrice, setManualBittyPrice] = useState("");
 
   const addAnn = useAddAnnouncement();
   const updateAnn = useUpdateAnnouncement();
   const deleteAnn = useDeleteAnnouncement();
   const setManual = useSetManualBalances();
   const setManualFundBalance = useSetManualFundBalance();
+  const setManualBittyPriceMut = useSetManualBittyPrice();
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -488,6 +491,78 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
             variant="ghost"
             className="text-muted-foreground hover:text-foreground flex-1"
             data-ocid="manual.fund.clear_button"
+          >
+            Clear (use live)
+          </Button>
+        </div>
+      </div>
+
+      {/* BITTYICP Price Override */}
+      <div className="glass-card-gold rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
+          BITTYICP Price Override
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Set the USD price per 1 BITTYICP token. Used as fallback if ICPSwap
+          live price fails. If ICPSwap is working, the live price always takes
+          priority.
+        </p>
+        <div className="space-y-1">
+          <label
+            htmlFor="manual-bitty-price"
+            className="text-xs text-muted-foreground"
+          >
+            Price per BITTYICP (USD)
+          </label>
+          <Input
+            id="manual-bitty-price"
+            placeholder="e.g. 0.0042"
+            value={manualBittyPrice}
+            onChange={(e) => setManualBittyPrice(e.target.value)}
+            className="bg-secondary/50 border-border font-mono"
+            data-ocid="manual.bitty_price.input"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={async () => {
+              try {
+                await setManualBittyPriceMut.mutateAsync({
+                  password,
+                  price: manualBittyPrice.trim(),
+                });
+                toast.success("BITTYICP price saved");
+                setManualBittyPrice("");
+              } catch {
+                toast.error("Failed to save price");
+              }
+            }}
+            disabled={setManualBittyPriceMut.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="manual.bitty_price.save_button"
+          >
+            {setManualBittyPriceMut.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save Price
+          </Button>
+          <Button
+            onClick={async () => {
+              try {
+                await setManualBittyPriceMut.mutateAsync({
+                  password,
+                  price: "",
+                });
+                toast.success("BITTYICP price cleared");
+              } catch {
+                toast.error("Failed to clear price");
+              }
+            }}
+            disabled={setManualBittyPriceMut.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="manual.bitty_price.clear_button"
           >
             Clear (use live)
           </Button>
@@ -786,7 +861,11 @@ export default function App() {
   const fundHasLive = fundLive !== null;
 
   const icpUsd = tokenPrices.data?.icpUsd ?? null;
-  const bittyUsd = tokenPrices.data?.bittyUsd ?? null;
+  const manualBittyPriceUsd = manualBalances.data?.bittyPriceUsd ?? "";
+  const liveBittyUsd = tokenPrices.data?.bittyUsd ?? null;
+  const bittyUsd =
+    liveBittyUsd ??
+    (manualBittyPriceUsd.trim() !== "" ? Number(manualBittyPriceUsd) : null);
 
   // Neuron stake USD
   const neuronStakeNum = neuronStake.data ?? null;
@@ -800,12 +879,21 @@ export default function App() {
       ? fundBalanceNum * bittyUsd
       : null;
 
-  // Total ICP treasury USD value (ICP treasury + NNS neuron stake)
+  // Total treasury USD value (ICP + Neuron + BITTYICP + Fund)
   const icpTreasuryNum = resolveBalanceNumber(manualIcp, icpLive);
   const neuronIcpNum = neuronStake.data ?? null;
-  const totalIcpUsd =
+  const bittyTreasuryNum = resolveBalanceNumber(manualBitty, bittyLive);
+  const icpComponentUsd =
     icpUsd !== null && icpTreasuryNum !== null && neuronIcpNum !== null
       ? (icpTreasuryNum + neuronIcpNum) * icpUsd
+      : null;
+  const bittyComponentUsd =
+    bittyUsd !== null && bittyTreasuryNum !== null && fundBalanceNum !== null
+      ? (bittyTreasuryNum + fundBalanceNum) * bittyUsd
+      : null;
+  const totalAllUsd =
+    icpComponentUsd !== null || bittyComponentUsd !== null
+      ? (icpComponentUsd ?? 0) + (bittyComponentUsd ?? 0)
       : null;
   const totalIcpLoading =
     (liveBalances.isLoading && manualBalances.isLoading) ||
@@ -877,7 +965,7 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
-          {/* Total ICP Treasury Value Banner */}
+          {/* Total Treasury Value Banner */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -888,10 +976,10 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Total ICP Treasury Value
+                  Total Treasury Value
                 </p>
                 <p className="text-xs text-muted-foreground/60">
-                  ICP Treasury + NNS Neuron Stake
+                  ICP Treasury + Neuron + BITTYICP + Fund
                 </p>
               </div>
               <div className="text-right">
@@ -902,9 +990,9 @@ export default function App() {
                       —
                     </span>
                   </div>
-                ) : totalIcpUsd !== null ? (
+                ) : totalAllUsd !== null ? (
                   <span className="text-3xl font-heading font-bold text-gold tabular-nums">
-                    {formatUsd(totalIcpUsd)}
+                    {formatUsd(totalAllUsd)}
                   </span>
                 ) : (
                   <span className="text-2xl font-heading font-bold text-gold/40">

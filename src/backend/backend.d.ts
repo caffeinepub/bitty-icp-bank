@@ -11,6 +11,7 @@ export interface ManualBalances {
   icp: string;
   bitty: string;
   fund: string;
+  bittyPriceUsd: string;
 }
 
 export interface _SERVICE {
@@ -18,6 +19,7 @@ export interface _SERVICE {
   getManualBalances: () => Promise<ManualBalances>;
   setManualBalances: (password: string, icp: string, bitty: string) => Promise<boolean>;
   setManualFundBalance: (password: string, fund: string) => Promise<boolean>;
+  setManualBittyPrice: (password: string, price: string) => Promise<boolean>;
   getAnnouncements: () => Promise<Announcement[]>;
   addAnnouncement: (password: string, title: string, body: string) => Promise<[] | [Announcement]>;
   updateAnnouncement: (password: string, id: bigint, title: string, body: string) => Promise<boolean>;

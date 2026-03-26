@@ -46,12 +46,18 @@ export function useGetFundBalance() {
 
 export function useGetManualBalances() {
   const { actor, isFetching } = useActor();
-  return useQuery<{ icp: string; bitty: string; fund: string }>({
+  return useQuery<{
+    icp: string;
+    bitty: string;
+    fund: string;
+    bittyPriceUsd: string;
+  }>({
     queryKey: ["manualBalances"],
     queryFn: async () => {
-      if (!actor) return { icp: "", bitty: "", fund: "" };
+      if (!actor) return { icp: "", bitty: "", fund: "", bittyPriceUsd: "" };
       const a = actor as any;
-      if (!a.getManualBalances) return { icp: "", bitty: "", fund: "" };
+      if (!a.getManualBalances)
+        return { icp: "", bitty: "", fund: "", bittyPriceUsd: "" };
       return await a.getManualBalances();
     },
     enabled: !!actor && !isFetching,
@@ -159,6 +165,19 @@ export function useSetManualFundBalance() {
       if (!actor) throw new Error("No actor");
       const a = actor as any;
       return await a.setManualFundBalance(password, fund);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
+  });
+}
+
+export function useSetManualBittyPrice() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation<boolean, Error, { password: string; price: string }>({
+    mutationFn: async ({ password, price }) => {
+      if (!actor) throw new Error("No actor");
+      const a = actor as any;
+      return await a.setManualBittyPrice(password, price);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["manualBalances"] }),
   });
