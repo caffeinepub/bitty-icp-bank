@@ -15,17 +15,32 @@ import {
   Clock,
   HelpCircle,
   Loader2,
+  LogOut,
   MessageSquare,
   Plus,
   Send,
   ShieldCheck,
   Users,
   Vote as VoteIcon,
+  Wallet,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
+
+declare global {
+  interface Window {
+    ic?: {
+      plug?: {
+        requestConnect: (opts?: { whitelist?: string[] }) => Promise<boolean>;
+        agent?: { getPrincipal: () => Promise<{ toString: () => string }> };
+        isConnected: () => Promise<boolean>;
+        disconnect: () => Promise<void>;
+      };
+    };
+  }
+}
 
 interface ProposalData {
   id: bigint;
@@ -93,8 +108,8 @@ function HowItWorksSection() {
     },
     {
       icon: "🔐",
-      title: "Login with Internet Identity",
-      desc: "Connect with Internet Identity to prove your identity. Then paste your principal ID to verify your $BITTYICP balance on-chain.",
+      title: "Connect your wallet to prove ownership",
+      desc: "Connect your wallet (Internet Identity or Plug) to prove you own the address. The app automatically reads your principal and checks your $BITTYICP balance — no copy-pasting needed.",
     },
     {
       icon: "📅",
@@ -109,7 +124,7 @@ function HowItWorksSection() {
     {
       icon: "💬",
       title: "Community Chat",
-      desc: "Each proposal has a dedicated chat so the community can discuss before voting. Requires Internet Identity login.",
+      desc: "Each proposal has a dedicated chat so the community can discuss before voting. Requires wallet sign-in.",
     },
   ];
 
@@ -225,10 +240,12 @@ function ChatSection({
   proposalId,
   actor,
   identity,
+  plugPrincipal,
 }: {
   proposalId: bigint;
   actor: any;
   identity: any;
+  plugPrincipal?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [chatName, setChatName] = useState("");
@@ -236,6 +253,10 @@ function ChatSection({
   const [sending, setSending] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const activePrincipal = identity
+    ? identity.getPrincipal().toString()
+    : (plugPrincipal ?? null);
 
   const loadMessages = useCallback(async () => {
     if (!actor) return;
@@ -266,11 +287,10 @@ function ChatSection({
   }, [messages]);
 
   useEffect(() => {
-    if (identity) {
-      const p = identity.getPrincipal().toString();
-      setChatName(`${p.slice(0, 10)}...`);
+    if (activePrincipal) {
+      setChatName(`${activePrincipal.slice(0, 10)}...`);
     }
-  }, [identity]);
+  }, [activePrincipal]);
 
   async function handleSend() {
     if (!actor || !chatMsg.trim() || !chatName.trim()) return;
@@ -372,9 +392,9 @@ function ChatSection({
         </div>
 
         <div className="border-t border-[oklch(0.87_0.17_90/0.15)] p-3 space-y-2">
-          {!identity ? (
+          {!activePrincipal ? (
             <p className="text-xs text-muted-foreground text-center py-1">
-              🔒 Sign in with Internet Identity to chat
+              🔒 Sign in with a wallet to chat
             </p>
           ) : (
             <>
@@ -433,28 +453,27 @@ function ProposalDetail({
   adminPassword: string;
 }) {
   const { actor } = useActor();
-  const { identity, login, isLoggingIn } = useInternetIdentity();
+  const { identity, login, isLoggingIn, clear } = useInternetIdentity();
+
+  const [plugPrincipal, setPlugPrincipal] = useState<string | null>(null);
+  const [plugConnecting, setPlugConnecting] = useState(false);
 
   const [votes, setVotes] = useState<VoteData[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [principalInput, setPrincipalInput] = useState("");
   const [bittyBalance, setBittyBalance] = useState<bigint | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
   const [votingPower, setVotingPower] = useState<number>(0);
   const [hasVotedState, setHasVotedState] = useState(false);
   const [casting, setCasting] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [balanceChecked, setBalanceChecked] = useState(false);
+
+  const activePrincipal: string | null =
+    identity?.getPrincipal().toString() ?? plugPrincipal ?? null;
 
   const isExpired = BigInt(Date.now()) * BigInt(1_000_000) > proposal.endTime;
   const isOpen = proposal.isOpen && !isExpired;
 
-  useEffect(() => {
-    if (identity) {
-      setPrincipalInput(identity.getPrincipal().toString());
-    }
-  }, [identity]);
-
+  // Load votes on mount
   useEffect(() => {
     async function loadVotes() {
       if (!actor) return;
@@ -468,36 +487,43 @@ function ProposalDetail({
     loadVotes();
   }, [actor, proposal.id]);
 
+  // Check if already voted when activePrincipal is known
   useEffect(() => {
     async function checkVoted() {
-      if (!actor || !principalInput) return;
+      if (!actor || !activePrincipal) return;
       try {
         const voted = await (actor as any).hasVoted(
           proposal.id,
-          principalInput,
+          activePrincipal,
         );
         setHasVotedState(voted);
       } catch (_e) {
         console.error("hasVoted error");
       }
     }
-    if (principalInput) checkVoted();
-  }, [actor, proposal.id, principalInput]);
+    if (activePrincipal) checkVoted();
+  }, [actor, proposal.id, activePrincipal]);
 
-  async function handleCheckBalance() {
-    if (!principalInput.trim()) {
-      toast.error("Enter your principal ID");
-      return;
+  // Auto-check balance when principal is available
+  useEffect(() => {
+    if (activePrincipal) {
+      handleCheckBalance(activePrincipal);
+    } else {
+      setBittyBalance(null);
+      setVotingPower(0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePrincipal]);
+
+  async function handleCheckBalance(principal: string) {
     setCheckingBalance(true);
     try {
-      const bal = await getBITTYBalance(principalInput.trim());
+      const bal = await getBITTYBalance(principal);
       setBittyBalance(bal);
       if (bal !== null) {
         const tokenAmount = Number(bal) / 1e8;
         const power = Math.floor(tokenAmount / 1000);
         setVotingPower(power);
-        setBalanceChecked(true);
         if (power < 1) {
           toast.error("You need at least 1,000 $BITTYICP to vote");
         } else {
@@ -511,17 +537,54 @@ function ProposalDetail({
     }
   }
 
-  async function handleCastVote() {
-    if (!actor || selectedOption === null) return;
-    if (!identity) {
-      toast.error("Please sign in with Internet Identity first");
+  async function connectPlug() {
+    if (!window.ic?.plug) {
+      toast.error(
+        "Plug wallet not found. Please install the Plug browser extension.",
+      );
       return;
     }
+    setPlugConnecting(true);
+    try {
+      const connected = await window.ic.plug.requestConnect();
+      if (connected) {
+        const principal = await window.ic.plug.agent?.getPrincipal();
+        setPlugPrincipal(principal?.toString() ?? null);
+      } else {
+        toast.error("Plug wallet connection was rejected.");
+      }
+    } catch (_e) {
+      toast.error("Failed to connect Plug wallet.");
+    } finally {
+      setPlugConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (identity) {
+      clear();
+    }
+    if (plugPrincipal) {
+      try {
+        await window.ic?.plug?.disconnect();
+      } catch (_e) {
+        // ignore
+      }
+      setPlugPrincipal(null);
+    }
+    setBittyBalance(null);
+    setVotingPower(0);
+    setHasVotedState(false);
+    setSelectedOption(null);
+  }
+
+  async function handleCastVote() {
+    if (!actor || selectedOption === null || !activePrincipal) return;
     setCasting(true);
     try {
       const result = await (actor as any).castVote(
         proposal.id,
-        principalInput,
+        activePrincipal,
         BigInt(selectedOption),
         BigInt(votingPower),
       );
@@ -678,24 +741,54 @@ function ProposalDetail({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!identity ? (
-              <div className="text-center space-y-3 py-4">
-                <p className="text-sm text-muted-foreground">
-                  Sign in with Internet Identity to vote
+            {!activePrincipal ? (
+              /* Not signed in — show two wallet options */
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground text-center">
+                  Connect the wallet that holds your $BITTYICP to vote
                 </p>
-                <Button
-                  onClick={login}
-                  disabled={isLoggingIn}
-                  className="bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)]"
-                  data-ocid="voting.login_button"
-                >
-                  {isLoggingIn ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="h-4 w-4 mr-2" />
-                  )}
-                  Sign In with Internet Identity
-                </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Internet Identity */}
+                  <div className="flex flex-col items-center gap-2">
+                    <Button
+                      onClick={login}
+                      disabled={isLoggingIn}
+                      className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)]"
+                      data-ocid="voting.login_button"
+                    >
+                      {isLoggingIn ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                      )}
+                      Internet Identity
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground/70 text-center leading-snug px-1">
+                      Supports NNS, Oisy, NFID, and any Internet Identity-based
+                      wallet
+                    </p>
+                  </div>
+
+                  {/* Plug Wallet */}
+                  <div className="flex flex-col items-center gap-2">
+                    <Button
+                      onClick={connectPlug}
+                      disabled={plugConnecting}
+                      className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)]"
+                      data-ocid="voting.plug_button"
+                    >
+                      {plugConnecting ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wallet className="h-4 w-4 mr-2" />
+                      )}
+                      Connect Plug Wallet
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground/70 text-center leading-snug px-1">
+                      Supports Plug browser extension wallet
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : hasVotedState ? (
               <div
@@ -707,40 +800,33 @@ function ProposalDetail({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium">
-                    Your Principal ID
-                  </p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={principalInput}
-                      onChange={(e) => {
-                        setPrincipalInput(e.target.value);
-                        setBalanceChecked(false);
-                        setBittyBalance(null);
-                      }}
-                      placeholder="Paste your principal ID"
-                      className="text-xs bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground"
-                      data-ocid="voting.input"
-                    />
-                    <Button
-                      onClick={handleCheckBalance}
-                      disabled={checkingBalance || !principalInput.trim()}
-                      size="sm"
-                      variant="outline"
-                      className="border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.1)] shrink-0"
-                      data-ocid="voting.secondary_button"
-                    >
-                      {checkingBalance ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        "Check"
-                      )}
-                    </Button>
+                {/* Signed-in identity info */}
+                <div className="flex items-center justify-between bg-[oklch(0.87_0.17_90/0.08)] border border-[oklch(0.87_0.17_90/0.2)] rounded-xl px-4 py-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {checkingBalance ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-gold shrink-0" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5 text-gold shrink-0" />
+                    )}
+                    <span className="text-xs text-muted-foreground truncate">
+                      {checkingBalance
+                        ? `Checking balance for: ${activePrincipal.slice(0, 20)}...`
+                        : `Connected: ${activePrincipal.slice(0, 20)}...`}
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleDisconnect}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-400 transition-colors shrink-0 ml-2"
+                    data-ocid="voting.toggle"
+                  >
+                    <LogOut className="h-3 w-3" />
+                    Disconnect
+                  </button>
                 </div>
 
-                {balanceChecked && bittyBalance !== null && (
+                {/* Balance result */}
+                {!checkingBalance && bittyBalance !== null && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -770,7 +856,7 @@ function ProposalDetail({
                   </motion.div>
                 )}
 
-                {balanceChecked && votingPower >= 1 && (
+                {!checkingBalance && votingPower >= 1 && (
                   <div className="space-y-3">
                     <p className="text-xs text-muted-foreground font-medium">
                       Select an option
@@ -818,7 +904,12 @@ function ProposalDetail({
         </Card>
       )}
 
-      <ChatSection proposalId={proposal.id} actor={actor} identity={identity} />
+      <ChatSection
+        proposalId={proposal.id}
+        actor={actor}
+        identity={identity}
+        plugPrincipal={plugPrincipal}
+      />
     </motion.div>
   );
 }

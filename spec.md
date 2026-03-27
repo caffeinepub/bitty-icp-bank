@@ -1,33 +1,31 @@
 # BITTY ICP BANK
 
 ## Current State
-The app displays ICP and BITTYICP treasury balances, NNS neuron stake, and Future Investment Fund. USD values are shown using CoinGecko (ICP) and ICPSwap (BITTYICP). ICPSwap is currently failing, leaving BITTYICP USD values blank. The total treasury banner only sums ICP treasury + neuron stake — BITTYICP balances are excluded. There is no admin field to set a manual BITTYICP price per token.
+The voting page has a sign-in flow: user clicks Internet Identity, then manually pastes their principal ID, clicks Check to verify BITTYICP balance. Anyone can paste any principal -- not just their own wallet.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Backend: `stable var manualBittyPriceUSD : Text = ""` field
-- Backend: update `getManualBalances` return type to include `bittyPriceUsd : Text`
-- Backend: new `setManualBittyPrice(password: Text, price: Text) : async Bool` method
-- Admin panel: "BITTYICP Price per Token (USD)" input field with Save/Clear buttons (persists to backend)
-- Total treasury now sums ALL balances: ICP treasury + neuron stake (×ICP price) + BITTYICP treasury + Future Investment Fund (×BITTYICP price)
-- Update total banner label to "Total Treasury Value" with subtitle reflecting all components
+- Plug wallet sign-in option alongside Internet Identity
+- Fine print under each button: II = 'Supports NNS, Oisy, NFID, and any Internet Identity-based wallet'; Plug = 'Supports Plug browser extension wallet'
+- After sign-in (either method), auto-use the authenticated principal (no paste input)
+- Auto-check BITTYICP balance immediately on sign-in
 
 ### Modify
-- BITTYICP USD price resolution: ICPSwap live price is still tried first; manual admin price is used as fallback ONLY if ICPSwap returns null. Live always overrides manual.
-- `useSetManualBittyPrice` mutation hook added to useQueries.ts
-- `useTokenPrices` stays unchanged; fallback resolution handled in App.tsx using the stored manual price
+- Replace single sign-in button with two options (II + Plug) with fine print
+- Replace principalInput state with authenticatedPrincipal derived from active session
+- Auto-trigger balance check via useEffect when authenticatedPrincipal changes
+- Update vote casting to use authenticatedPrincipal directly
+- Update How It Works step to say 'connect your wallet' instead of paste principal
 
 ### Remove
-- Nothing removed
+- Manual paste principal ID input field
+- Manual Check balance button
 
 ## Implementation Plan
-1. Update `src/backend/main.mo`: add `manualBittyPriceUSD` stable var, update `getManualBalances` return type, add `setManualBittyPrice` method
-2. Update `src/backend/backend.d.ts` and `src/frontend/src/declarations/backend.did.d.ts` + `backend.did.js` to reflect new signatures
-3. Update `src/frontend/src/hooks/useQueries.ts`: add `useSetManualBittyPrice` mutation
-4. Update `src/frontend/src/App.tsx`:
-   - Extract `manualBittyPriceUsd` from `manualBalances.data`
-   - Compute effective bittyUsd: `tokenPrices.data?.bittyUsd ?? (manualBittyPriceUsd ? Number(manualBittyPriceUsd) : null)`
-   - Add BITTYICP price admin field in AdminPanel (local state + save/clear handlers)
-   - Update total treasury calc to include all four balances
-   - Update banner text
+1. Add Plug wallet logic via window.ic?.plug API (detect, connect, get principal)
+2. Add plugPrincipal/plugConnected state; create unified activePrincipal
+3. Two-button sign-in layout with fine print under each
+4. useEffect auto-triggers balance check when activePrincipal changes
+5. Remove paste input + Check button
+6. Update vote casting and chat to use activePrincipal
