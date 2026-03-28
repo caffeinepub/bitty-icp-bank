@@ -348,41 +348,42 @@ function MyWalletPanel({
               )}
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Send BITTYICP rewards here from any wallet
-          </p>
         </div>
 
         {/* Token Balances */}
-        <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
-          <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">
-            Token Balances
+        <div className="rounded-xl border border-yellow-500/30 bg-black/40 p-4">
+          <p className="text-sm font-black text-yellow-400 uppercase tracking-widest mb-4 text-center">
+            TOKEN BALANCES
           </p>
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-gray-400">$BITTYICP</span>
-            {icpBalanceLoading ? (
-              <span className="text-xs text-gray-500">Loading…</span>
-            ) : (
-              <span className="text-sm font-bold text-yellow-400">
-                {walletBittyBalance.toLocaleString(undefined, {
-                  maximumFractionDigits: 2,
-                })}{" "}
-                BITTYICP
-              </span>
-            )}
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-gray-400">ICP</span>
-            {icpBalanceLoading ? (
-              <span className="text-xs text-gray-500">Loading…</span>
-            ) : (
-              <span className="text-sm font-bold text-blue-300">
-                {icpBalance.toLocaleString(undefined, {
-                  maximumFractionDigits: 4,
-                })}{" "}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-yellow-500/30 bg-black/50 p-3 text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                $BITTYICP
+              </p>
+              {icpBalanceLoading ? (
+                <span className="text-xl text-gray-500">…</span>
+              ) : (
+                <p className="text-4xl font-black text-yellow-400 leading-none">
+                  {walletBittyBalance.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              )}
+            </div>
+            <div className="rounded-xl border border-blue-500/30 bg-black/50 p-3 text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                 ICP
-              </span>
-            )}
+              </p>
+              {icpBalanceLoading ? (
+                <span className="text-xl text-gray-500">…</span>
+              ) : (
+                <p className="text-4xl font-black text-blue-300 leading-none">
+                  {icpBalance.toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -2976,6 +2977,14 @@ export default function VotingPage({
   const latestBitty = bittyVotes[bittyVotes.length - 1];
   const latestICP = icpVotes[icpVotes.length - 1];
 
+  const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+  const upcomingBitty = bittyVotes.filter(
+    (v) => !v.isFinalized && v.openTime > nowNs,
+  );
+  const upcomingICP = icpVotes.filter(
+    (v) => !v.isFinalized && v.openTime > nowNs,
+  );
+
   return (
     <div className="min-h-screen bg-black text-white relative">
       {/* Background */}
@@ -3166,6 +3175,19 @@ export default function VotingPage({
           )}
         </AnimatePresence>
 
+        {/* Total Voting Power */}
+        {isSignedIn && (
+          <div className="rounded-2xl border border-yellow-600/40 bg-black/40 backdrop-blur-sm p-5 text-center">
+            <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">
+              TOTAL VOTING POWER
+            </p>
+            <p className="text-6xl font-black text-yellow-400 leading-none">
+              {effectiveVotingPower}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">votes</p>
+          </div>
+        )}
+
         {/* Voting Power Boost Announcement */}
         {isSignedIn && (
           <div className="w-full rounded-xl border border-yellow-500/60 bg-yellow-900/20 px-4 py-3 text-center">
@@ -3228,6 +3250,41 @@ export default function VotingPage({
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Upcoming Votes */}
+            {(upcomingBitty.length > 0 || upcomingICP.length > 0) && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 rounded-xl bg-blue-500/10 border border-blue-500/25 p-2.5">
+                    <Clock className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-lg text-white tracking-tight">
+                      Upcoming Votes
+                    </h2>
+                    <p className="text-xs text-gray-400">
+                      Scheduled votes opening soon
+                    </p>
+                  </div>
+                </div>
+                {[...upcomingBitty, ...upcomingICP].map((vote) => (
+                  <VoteCard
+                    key={String(vote.id)}
+                    vote={vote}
+                    principal={principal}
+                    votingPower={effectiveVotingPower}
+                    actor={actor}
+                    isAdmin={isAdmin}
+                    adminPassword={adminPassword}
+                  />
+                ))}
+              </motion.div>
             )}
 
             {/* Community Proposals */}
