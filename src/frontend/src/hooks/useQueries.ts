@@ -236,59 +236,26 @@ export function useTokenPrices() {
 
       let bittyUsd: number | null = null;
       try {
-        const swapRes = await fetch(
-          `https://info.icpswap.com/api/token/price?canisterId=${BITTYICP_CANISTER}`,
+        const allTokensRes = await fetch(
+          "https://api.icpswap.com/info/token/all",
         );
-        if (swapRes.ok) {
-          const swapData = await swapRes.json();
-          const price =
-            swapData?.data?.priceUSD ??
-            swapData?.priceUSD ??
-            swapData?.data?.price ??
-            swapData?.price ??
-            null;
-          if (price !== null) bittyUsd = Number(price);
+        if (allTokensRes.ok) {
+          const allTokensData = await allTokensRes.json();
+          const tokens = Array.isArray(allTokensData)
+            ? allTokensData
+            : (allTokensData?.data ?? []);
+          const entry = tokens.find(
+            (t: any) =>
+              t?.canisterId === BITTYICP_CANISTER ||
+              t?.address === BITTYICP_CANISTER ||
+              t?.id === BITTYICP_CANISTER,
+          );
+          if (entry?.price != null) {
+            bittyUsd = Number(entry.price);
+          }
         }
       } catch {
         bittyUsd = null;
-      }
-
-      if (bittyUsd === null) {
-        try {
-          const swapRes2 = await fetch(
-            `https://api.icpswap.com/v3/token/price?canisterId=${BITTYICP_CANISTER}`,
-          );
-          if (swapRes2.ok) {
-            const swapData2 = await swapRes2.json();
-            const price =
-              swapData2?.data?.priceUSD ??
-              swapData2?.priceUSD ??
-              swapData2?.data?.price ??
-              swapData2?.price ??
-              null;
-            if (price !== null) bittyUsd = Number(price);
-          }
-        } catch {
-          bittyUsd = null;
-        }
-      }
-
-      if (bittyUsd === null && icpUsd !== null) {
-        try {
-          const pairRes = await fetch(
-            `https://api.icpswap.com/v3/swap/pool/tokens?token0=ryjl3-tyaaa-aaaaa-aaaba-cai&token1=${BITTYICP_CANISTER}`,
-          );
-          if (pairRes.ok) {
-            const pairData = await pairRes.json();
-            const bittyPerIcp =
-              pairData?.data?.token1Price ?? pairData?.token1Price ?? null;
-            if (bittyPerIcp !== null && Number(bittyPerIcp) > 0) {
-              bittyUsd = icpUsd / Number(bittyPerIcp);
-            }
-          }
-        } catch {
-          bittyUsd = null;
-        }
       }
 
       return { icpUsd, bittyUsd };
