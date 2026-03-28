@@ -254,6 +254,8 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const setGamesWalletMutation = useSetGamesWallet();
   const [manualBittyPrice, setManualBittyPrice] = useState("");
   const [gamesWalletInput, setGamesWalletInput] = useState("");
+  const [resetWalletsLoading, setResetWalletsLoading] = useState(false);
+  const [resetWalletsConfirm, setResetWalletsConfirm] = useState(false);
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -676,6 +678,70 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
             Clear
           </Button>
         </div>
+      </div>
+      {/* Reset Verified Wallets */}
+      <div className="space-y-3 border border-red-500/30 rounded-xl p-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-red-400">
+          ⚠ Danger Zone
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Reset All Verified Wallets will permanently clear every user's
+          verified external wallet links. This cannot be undone.
+        </p>
+        {!resetWalletsConfirm ? (
+          <Button
+            onClick={() => setResetWalletsConfirm(true)}
+            variant="outline"
+            className="border-red-500/40 text-red-400 hover:bg-red-500/10 w-full"
+            data-ocid="admin.reset_wallets.button"
+          >
+            Reset All Verified Wallets
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-red-400 font-semibold text-center">
+              Are you sure? This clears ALL users' verified wallets.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                onClick={async () => {
+                  setResetWalletsLoading(true);
+                  try {
+                    const a = actor as any;
+                    if (!a || !a.adminResetVerifiedWallets)
+                      throw new Error("Not connected");
+                    await a.adminResetVerifiedWallets(password);
+                    toast.success("All verified wallets have been reset.");
+                    setResetWalletsConfirm(false);
+                  } catch (err: any) {
+                    toast.error(
+                      `Failed to reset: ${err?.message ?? String(err)}`,
+                    );
+                  } finally {
+                    setResetWalletsLoading(false);
+                  }
+                }}
+                disabled={resetWalletsLoading}
+                variant="destructive"
+                className="flex-1"
+                data-ocid="admin.reset_wallets.confirm_button"
+              >
+                {resetWalletsLoading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                Yes, Reset All
+              </Button>
+              <Button
+                onClick={() => setResetWalletsConfirm(false)}
+                variant="ghost"
+                className="flex-1 text-muted-foreground"
+                data-ocid="admin.reset_wallets.cancel_button"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       {/* Existing Announcements */}
       <div className="space-y-3">

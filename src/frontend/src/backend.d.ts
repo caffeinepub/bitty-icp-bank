@@ -91,6 +91,8 @@ export interface backendInterface {
     setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
     setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
     verifyExternalWallet(externalWallet: string): Promise<{ ok: null } | { err: string }>;
+    adminResetVerifiedWallets(password: string): Promise<boolean>;
+    unverifyWallet(externalWallet: string): Promise<boolean>;
     initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }>;
     confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }>;
     getMyVerifiedWallets(): Promise<string[]>;

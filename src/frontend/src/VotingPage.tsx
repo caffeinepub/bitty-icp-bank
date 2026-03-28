@@ -185,6 +185,7 @@ function MyWalletPanel({
   const [sendLoading, setSendLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showSend, setShowSend] = useState(false);
+  const [sendToken, setSendToken] = useState<"bitty" | "icp">("bitty");
   const [icpBalance, setIcpBalance] = useState<number>(0);
   const [icpBalanceLoading, setIcpBalanceLoading] = useState(false);
   const [walletBittyBalance, setWalletBittyBalance] = useState<number>(0);
@@ -300,12 +301,27 @@ function MyWalletPanel({
     }
   }
 
-  const totalVerifiedPower = verifiedWallets.reduce(
-    (sum, w) => sum + Math.floor(w.balance / 1000),
-    0,
-  );
-  const ownPower = Math.floor(walletBittyBalance / 1000);
-  const totalVotingPower = ownPower + totalVerifiedPower;
+  async function handleSendICP() {
+    if (!sendDest.trim() || !sendAmount.trim()) {
+      toast.error("Enter destination and amount");
+      return;
+    }
+    const amt = Number.parseFloat(sendAmount);
+    if (Number.isNaN(amt) || amt <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSendLoading(true);
+    try {
+      toast.error(
+        "To send ICP, use NNS, Oisy, or any ICP-compatible wallet. Direct transfers from this panel require the Plug wallet.",
+      );
+    } catch (e: any) {
+      toast.error(e?.message ?? "Send failed");
+    } finally {
+      setSendLoading(false);
+    }
+  }
 
   return (
     <motion.div
@@ -326,7 +342,7 @@ function MyWalletPanel({
         {/* Receive Address */}
         <div>
           <p className="text-xs text-gray-400 mb-1 uppercase tracking-wider">
-            Your BITTY ICP Bank Address (Receive)
+            Your BITTY ICP Bank Address (Receive $BITTYICP & $ICP)
           </p>
           <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
             <span
@@ -348,6 +364,10 @@ function MyWalletPanel({
               )}
             </button>
           </div>
+          <p className="text-xs text-gray-400 mt-1">
+            This address receives both $BITTYICP and $ICP tokens — including
+            voting rewards.
+          </p>
         </div>
 
         {/* Token Balances */}
@@ -387,25 +407,6 @@ function MyWalletPanel({
           </div>
         </div>
 
-        {/* Voting Power Summary */}
-        <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
-          <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">
-            Total Voting Power
-          </p>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-black text-yellow-400">
-              {totalVotingPower}
-            </span>
-            <span className="text-xs text-gray-400">votes</span>
-          </div>
-          {totalVerifiedPower > 0 && (
-            <p className="text-xs text-green-400 mt-1">
-              +{totalVerifiedPower} from {verifiedWallets.length} verified
-              wallet(s)
-            </p>
-          )}
-        </div>
-
         {/* Send Panel */}
         <div>
           <button
@@ -415,10 +416,26 @@ function MyWalletPanel({
             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
             <ArrowUpRight className="w-3 h-3" />
-            Send BITTYICP
+            Send $BITTYICP or $ICP
           </button>
           {showSend && (
             <div className="mt-2 space-y-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSendToken("bitty")}
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-bold border transition-colors ${sendToken === "bitty" ? "bg-yellow-600/30 border-yellow-500/60 text-yellow-300" : "bg-black/30 border-gray-700 text-gray-400 hover:border-yellow-600/40"}`}
+                >
+                  $BITTYICP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSendToken("icp")}
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-bold border transition-colors ${sendToken === "icp" ? "bg-blue-600/30 border-blue-500/60 text-blue-300" : "bg-black/30 border-gray-700 text-gray-400 hover:border-blue-600/40"}`}
+                >
+                  $ICP
+                </button>
+              </div>
               <Input
                 placeholder="Destination address"
                 value={sendDest}
@@ -427,7 +444,7 @@ function MyWalletPanel({
                 data-ocid="wallet.input"
               />
               <Input
-                placeholder="Amount (BITTYICP)"
+                placeholder="Amount"
                 value={sendAmount}
                 onChange={(e) => setSendAmount(e.target.value)}
                 className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
@@ -436,14 +453,14 @@ function MyWalletPanel({
               <Button
                 size="sm"
                 data-ocid="wallet.submit_button"
-                onClick={handleSend}
+                onClick={sendToken === "bitty" ? handleSend : handleSendICP}
                 disabled={sendLoading}
                 className="w-full bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold"
               >
                 {sendLoading ? (
                   <Loader2 className="w-3 h-3 animate-spin mr-1" />
                 ) : null}
-                Send
+                Send {sendToken === "bitty" ? "$BITTYICP" : "$ICP"}
               </Button>
             </div>
           )}
@@ -452,18 +469,23 @@ function MyWalletPanel({
         {/* Verified Wallets */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">
+            <h4 className="text-base font-black text-yellow-300 uppercase tracking-widest">
               Verified External Wallets
-            </p>
+            </h4>
             {walletsLoading && (
               <Loader2 className="w-3 h-3 animate-spin text-yellow-500" />
             )}
           </div>
 
           {verifiedWallets.length === 0 && !walletsLoading && (
-            <p className="text-xs text-gray-600 italic">
-              No external wallets verified yet.
-            </p>
+            <div className="rounded-xl border border-yellow-500/40 bg-yellow-900/20 p-3 text-center">
+              <p className="text-sm font-bold text-yellow-300">
+                No external wallets verified yet.
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Verify an external wallet below to boost your voting power.
+              </p>
+            </div>
           )}
 
           {verifiedWallets.map((w, i) => (
@@ -493,16 +515,27 @@ function MyWalletPanel({
               <button
                 type="button"
                 data-ocid={`wallet.delete_button.${i + 1}`}
-                onClick={() => {
+                onClick={async () => {
+                  const walletPrincipal = w.principal;
                   setVerifiedWallets((prev) =>
                     prev.filter((_, vi) => vi !== i),
                   );
-                  toast.success(
-                    "Wallet removed from display. Contact admin to permanently unlink.",
-                  );
+                  try {
+                    if (actor) {
+                      await (actor as any).unverifyWallet(walletPrincipal);
+                    }
+                    toast.success(
+                      "Wallet permanently unverified. That address is now free to be re-verified by anyone.",
+                    );
+                  } catch (err) {
+                    console.error("unverifyWallet error:", err);
+                    toast.error("Failed to unverify wallet. Please try again.");
+                    // Re-load wallets to restore state
+                    loadVerifiedWallets();
+                  }
                 }}
                 className="ml-2 text-gray-600 hover:text-red-400 transition-colors"
-                title="Remove wallet"
+                title="Permanently remove this verified wallet"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -515,9 +548,9 @@ function MyWalletPanel({
               type="button"
               data-ocid="wallet.secondary_button"
               onClick={() => setShowAddWallet(true)}
-              className="mt-2 flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+              className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border-2 border-yellow-500/60 bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-300 font-bold text-sm py-3 transition-colors"
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="w-4 h-4" />
               Add External Wallet
             </button>
           ) : (
@@ -2890,8 +2923,34 @@ export default function VotingPage({
   const votingPower = Math.floor(bittyBalance / 1000);
   const isSignedIn = !!principal;
 
-  // Effective voting power (same as votingPower; verified wallets shown in wallet panel)
-  const effectiveVotingPower = votingPower;
+  // Verified wallet voting power
+  const [verifiedWalletsVP, setVerifiedWalletsVP] = useState(0);
+  useEffect(() => {
+    const a = actor as any;
+    if (!principal || !a || !a.getMyVerifiedWallets) {
+      setVerifiedWalletsVP(0);
+      return;
+    }
+    (async () => {
+      try {
+        const wallets: string[] = await a.getMyVerifiedWallets();
+        const balances = await Promise.all(
+          wallets.map((w: string) =>
+            getBITTYBalance(w)
+              .then((raw) => Number(raw) / 1e8)
+              .catch(() => 0),
+          ),
+        );
+        setVerifiedWalletsVP(
+          balances.reduce((sum, b) => sum + Math.floor(b / 1000), 0),
+        );
+      } catch {
+        setVerifiedWalletsVP(0);
+      }
+    })();
+  }, [principal, actor]);
+
+  const effectiveVotingPower = votingPower + verifiedWalletsVP;
 
   // Load votes on actor ready
   const loadVotes = useCallback(async () => {
@@ -3178,13 +3237,17 @@ export default function VotingPage({
         {/* Total Voting Power */}
         {isSignedIn && (
           <div className="rounded-2xl border border-yellow-600/40 bg-black/40 backdrop-blur-sm p-5 text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">
+            <p className="text-sm font-extrabold text-yellow-300 uppercase tracking-widest mb-2">
               TOTAL VOTING POWER
             </p>
-            <p className="text-6xl font-black text-yellow-400 leading-none">
+            <p className="text-7xl font-black text-yellow-400 leading-none">
               {effectiveVotingPower}
             </p>
-            <p className="text-sm text-gray-400 mt-1">votes</p>
+            <p className="text-base font-semibold text-gray-300 mt-2">votes</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Combined balance of your connected account + all verified external
+              wallets
+            </p>
           </div>
         )}
 

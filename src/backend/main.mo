@@ -902,6 +902,29 @@ actor {
   };
 
 
+  // Admin: reset all verified wallets (fresh start)
+  public shared func adminResetVerifiedWallets(password : Text) : async Bool {
+    if (not isAdmin(password)) return false;
+    verifiedWalletOwners := [];
+    userVerifiedWallets := [];
+    pendingVerifications := [];
+    true;
+  };
+
+  // User: unverify a single external wallet
+  public shared ({ caller }) func unverifyWallet(externalWallet : Text) : async Bool {
+    let callerText = caller.toText();
+    verifiedWalletOwners := verifiedWalletOwners.filter(func(e : (Text, Text)) : Bool {
+      not (e.0 == externalWallet and e.1 == callerText)
+    });
+    let existing = getUserWallets(callerText);
+    let updated = existing.filter(func(w : Text) : Bool { w != externalWallet });
+    userVerifiedWallets := userVerifiedWallets.filter(func(e : (Text, [Text])) : Bool { e.0 != callerText });
+    if (updated.size() > 0) {
+      userVerifiedWallets := userVerifiedWallets.concat([(callerText, updated)]);
+    };
+    true;
+  };
 
 
 };

@@ -644,6 +644,14 @@ export class Backend implements backendInterface {
         const result = await this.actor.verifyExternalWallet(externalWallet);
         return result;
     }
+    async adminResetVerifiedWallets(password: string): Promise<boolean> {
+        const result = await this.actor.adminResetVerifiedWallets(password);
+        return result;
+    }
+    async unverifyWallet(externalWallet: string): Promise<boolean> {
+        const result = await this.actor.unverifyWallet(externalWallet);
+        return result;
+    }
 }
 function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
     return from_candid_variant_n8(_uploadFile, _downloadFile, value);
