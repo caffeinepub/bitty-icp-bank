@@ -247,7 +247,7 @@ actor {
     Outcall.transform(input);
   };
 
-  // Extract value after a needle, until the next double-quote character
+  // Extract quoted string value after a needle
   func findValue(haystack : Text, needle : Text) : Text {
     var h : [Char] = [];
     for (c in haystack.chars()) { h := h.concat([c]) };
@@ -256,7 +256,6 @@ actor {
     let hl = h.size();
     let nl = n.size();
     if (nl == 0 or nl > hl) return "";
-    // Use Char.fromNat32(34) to avoid parser confusion with quote-after-operator
     let dquote : Char = Char.fromNat32(34);
     var i : Nat = 0;
     while (i + nl <= hl) {
@@ -280,6 +279,48 @@ actor {
     ""
   };
 
+  // Extract unquoted numeric value after a needle (handles "key":0.000007 format)
+  func findNumberValue(haystack : Text, needle : Text) : Text {
+    var h : [Char] = [];
+    for (c in haystack.chars()) { h := h.concat([c]) };
+    var n : [Char] = [];
+    for (c in needle.chars()) { n := n.concat([c]) };
+    let hl = h.size();
+    let nl = n.size();
+    if (nl == 0 or nl > hl) return "";
+    var i : Nat = 0;
+    while (i + nl <= hl) {
+      var j : Nat = 0;
+      var matched : Bool = true;
+      while (j < nl and matched) {
+        if (h[i + j] != n[j]) matched := false;
+        j += 1;
+      };
+      if (matched) {
+        var val : Text = "";
+        var k = i + nl;
+        // skip whitespace
+        while (k < hl and (h[k] == ' ' or h[k] == '\t')) { k += 1 };
+        // read numeric characters
+        var reading = true;
+        while (k < hl and reading) {
+          let c = h[k];
+          if (c == '0' or c == '1' or c == '2' or c == '3' or c == '4' or
+              c == '5' or c == '6' or c == '7' or c == '8' or c == '9' or
+              c == '.' or c == 'e' or c == 'E' or c == '-' or c == '+') {
+            val := val # Text.fromChar(c);
+            k += 1;
+          } else {
+            reading := false;
+          };
+        };
+        if (val != "") return val;
+      };
+      i += 1;
+    };
+    ""
+  };
+
   // Fetch ICP/USD price from Coinbase API via HTTP outcall
   public shared func getIcpUsdPrice() : async Text {
     try {
@@ -288,7 +329,10 @@ actor {
         [],
         transformHttpResponse,
       );
-      findValue(body, "\"amount\":\"")
+      // Coinbase returns {"data":{"amount":"5.10",...}} - quoted value
+      let quoted = findValue(body, "\"amount\":\"");
+      if (quoted != "") quoted
+      else findNumberValue(body, "\"amount\":")
     } catch (_) { "" }
   };
 
@@ -300,14 +344,19 @@ actor {
         [],
         transformHttpResponse,
       );
-      // Try priceUSD first, then price
-      let priceUsd = findValue(body, "\"priceUSD\":\"");
-      if (priceUsd != "") priceUsd
-      else findValue(body, "\"price\":\"")
+      // Try priceUSD quoted, then unquoted, then price quoted, then unquoted
+      let p1 = findValue(body, "\"priceUSD\":\"");
+      if (p1 != "") return p1;
+      let p2 = findNumberValue(body, "\"priceUSD\":");
+      if (p2 != "") return p2;
+      let p3 = findValue(body, "\"price\":\"");
+      if (p3 != "") return p3;
+      findNumberValue(body, "\"price\":")
     } catch (_) { "" }
   };
 
   //------------------------------ User Profile ------------------------------
+
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     userProfiles.get(caller);
