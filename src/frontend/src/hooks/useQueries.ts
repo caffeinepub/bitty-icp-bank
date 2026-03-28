@@ -244,23 +244,55 @@ async function fetchIcpUsd(): Promise<number | null> {
 }
 
 async function fetchBittyUsd(): Promise<number | null> {
-  // ICPSwap token/all - CORS allowed (used by icpindex.app from browser)
+  // 1. ICPSwap specific token endpoint (small payload, fast)
   try {
-    const res = await fetch("https://api.icpswap.com/info/token/all");
+    const res = await fetch(
+      `https://api.icpswap.com/info/token/${BITTYICP_CANISTER}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
     if (res.ok) {
       const data = await res.json();
-      const tokens: any[] = data?.data ?? data ?? [];
-      const token = tokens.find(
-        (t: any) =>
-          t.address === BITTYICP_CANISTER || t.canisterId === BITTYICP_CANISTER,
-      );
-      if (token) {
-        const price = token.priceUSD ?? token.price ?? token.priceUsd;
-        if (price !== undefined && price !== null)
-          return Number.parseFloat(String(price)) || null;
+      // Response might be { data: { priceUSD: "0.00000742" } } or similar
+      const tokenData = data?.data ?? data;
+      const price =
+        tokenData?.priceUSD ??
+        tokenData?.priceUsd ??
+        tokenData?.price ??
+        tokenData?.usdPrice;
+      if (price !== undefined && price !== null) {
+        const p = Number.parseFloat(String(price));
+        if (p > 0) return p;
       }
     }
   } catch {}
+
+  // 2. ICPSwap token/all with timeout (fallback, large payload)
+  try {
+    const res = await fetch("https://api.icpswap.com/info/token/all", {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const tokens: any[] = data?.data ?? data ?? [];
+      const token = Array.isArray(tokens)
+        ? tokens.find(
+            (t: any) =>
+              t.address === BITTYICP_CANISTER ||
+              t.canisterId === BITTYICP_CANISTER ||
+              t.id === BITTYICP_CANISTER,
+          )
+        : null;
+      if (token) {
+        const price =
+          token.priceUSD ?? token.priceUsd ?? token.price ?? token.usdPrice;
+        if (price !== undefined && price !== null) {
+          const p = Number.parseFloat(String(price));
+          if (p > 0) return p;
+        }
+      }
+    }
+  } catch {}
+
   return null;
 }
 
