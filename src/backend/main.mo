@@ -321,38 +321,51 @@ actor {
     ""
   };
 
-  // Fetch ICP/USD price from Coinbase API via HTTP outcall
+  // Fetch ICP/USD price from Binance public API via HTTP outcall
   public shared func getIcpUsdPrice() : async Text {
     try {
       let body = await Outcall.httpGetRequest(
-        "https://api.coinbase.com/v2/prices/ICP-USD/spot",
+        "https://api.binance.com/api/v3/ticker/price?symbol=ICPUSDT",
         [],
         transformHttpResponse,
       );
-      // Coinbase returns {"data":{"amount":"5.10",...}} - quoted value
-      let quoted = findValue(body, "\"amount\":\"");
-      if (quoted != "") quoted
-      else findNumberValue(body, "\"amount\":")
+      // Binance returns {"symbol":"ICPUSDT","price":"5.1234"} - always quoted
+      findValue(body, "\"price\":\"")
     } catch (_) { "" }
   };
 
   // Fetch BITTYICP/USD price from ICPSwap API via HTTP outcall
+  // Tries multiple ICPSwap URL patterns with all response formats
   public shared func getBittyUsdPrice() : async Text {
+    // Pattern 1: specific token stats endpoint
     try {
-      let body = await Outcall.httpGetRequest(
+      let body1 = await Outcall.httpGetRequest(
+        "https://api.icpswap.com/info/token-stats/qroj6-lyaaa-aaaam-qeqta-cai",
+        [],
+        transformHttpResponse,
+      );
+      let p1 = findValue(body1, "\"priceUSD\":\"");
+      if (p1 != "") return p1;
+      let p2 = findNumberValue(body1, "\"priceUSD\":");
+      if (p2 != "") return p2;
+    } catch (_) {};
+    // Pattern 2: token info endpoint (alternate path)
+    try {
+      let body2 = await Outcall.httpGetRequest(
         "https://api.icpswap.com/info/token/qroj6-lyaaa-aaaam-qeqta-cai",
         [],
         transformHttpResponse,
       );
-      // Try priceUSD quoted, then unquoted, then price quoted, then unquoted
-      let p1 = findValue(body, "\"priceUSD\":\"");
-      if (p1 != "") return p1;
-      let p2 = findNumberValue(body, "\"priceUSD\":");
-      if (p2 != "") return p2;
-      let p3 = findValue(body, "\"price\":\"");
+      let p3 = findValue(body2, "\"priceUSD\":\"");
       if (p3 != "") return p3;
-      findNumberValue(body, "\"price\":")
-    } catch (_) { "" }
+      let p4 = findNumberValue(body2, "\"priceUSD\":");
+      if (p4 != "") return p4;
+      let p5 = findValue(body2, "\"price\":\"");
+      if (p5 != "") return p5;
+      let p6 = findNumberValue(body2, "\"price\":");
+      if (p6 != "") return p6;
+    } catch (_) {};
+    ""
   };
 
   //------------------------------ User Profile ------------------------------
