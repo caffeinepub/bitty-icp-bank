@@ -104,3 +104,25 @@
 .bg-icp-glow {
   background: oklch(0.72 0.12 218);
 }
+
+/* Periodic coin spin animation - spins once every ~5 seconds */
+@keyframes coin-spin-periodic {
+  0% {
+    transform: rotateY(0deg);
+  }
+  20% {
+    transform: rotateY(360deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+
+.coin-spin {
+  animation: coin-spin-periodic 5s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+
+.coin-spin:hover {
+  animation: coin-spin-periodic 1s ease-in-out infinite;
+}

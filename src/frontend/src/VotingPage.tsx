@@ -3032,11 +3032,17 @@ export default function VotingPage({
   const bittyVotes = votes.filter((v) => "BITTYICP" in v.voteType);
   const icpVotes = votes.filter((v) => "ICP" in v.voteType);
 
-  // Show most recent of each type
-  const latestBitty = bittyVotes[bittyVotes.length - 1];
-  const latestICP = icpVotes[icpVotes.length - 1];
-
   const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+
+  // Live (open) votes only for the main vote cards section
+  const latestBitty = bittyVotes
+    .filter((v) => !v.isFinalized && v.openTime <= nowNs)
+    .slice(-1)[0];
+  const latestICP = icpVotes
+    .filter((v) => !v.isFinalized && v.openTime <= nowNs)
+    .slice(-1)[0];
+
+  // Upcoming (not yet open) votes - deduplicated, sorted by date
   const upcomingBittyAll = bittyVotes
     .filter((v) => !v.isFinalized && v.openTime > nowNs)
     .sort((a, b) => (a.openTime < b.openTime ? -1 : 1));
@@ -3097,7 +3103,11 @@ export default function VotingPage({
           className="text-center"
         >
           <div className="flex items-center justify-center gap-3 mb-2">
-            <VoteIcon className="w-8 h-8 text-yellow-400" />
+            <img
+              src="/assets/generated/bittyicp-coin-logo-transparent.dim_200x200.png"
+              alt="BITTYICP coin"
+              className="w-10 h-10 rounded-full object-cover coin-spin"
+            />
             <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
               BITTYICP GOVERNANCE
             </h1>
