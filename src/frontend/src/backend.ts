@@ -183,6 +183,8 @@ export interface backendInterface {
     getMyVerifiedWallets(): Promise<string[]>;
     isExternalWalletClaimed(wallet: string): Promise<boolean>;
     getWalletOwner(wallet: string): Promise<string | null>;
+    getIcpUsdPrice(): Promise<string>;
+    getBittyUsdPrice(): Promise<string>;
 }
 import type { Announcement as _Announcement, ChatMessage as _ChatMessage, Proposal as _Proposal, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -650,6 +652,14 @@ export class Backend implements backendInterface {
     }
     async unverifyWallet(externalWallet: string): Promise<boolean> {
         const result = await this.actor.unverifyWallet(externalWallet);
+        return result;
+    }
+    async getIcpUsdPrice(): Promise<string> {
+        const result = await this.actor.getIcpUsdPrice();
+        return result;
+    }
+    async getBittyUsdPrice(): Promise<string> {
+        const result = await this.actor.getBittyUsdPrice();
         return result;
     }
 }

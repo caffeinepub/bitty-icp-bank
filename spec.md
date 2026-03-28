@@ -1,44 +1,33 @@
 # BITTY ICP BANK
 
 ## Current State
+Token prices (ICP/USD and BITTYICP/USD) are fetched directly from the browser via:
+- CoinGecko API for ICP/USD
+- ICPSwap API for BITTYICP/USD
 
-The voting page (`VotingPage.tsx`) has:
-- Two monthly vote cards for ICP and BITTYICP treasury
-- A RewardsPoolPanel showing pool breakdowns including voter-by-voter breakdown
-- A canister deposit address card that appears to be visible to everyone
-- No separation between admin-only content and public/voter content in the rewards section
-- No personal "My Rewards" panel per voter
+Both are failing silently due to CORS restrictions and CoinGecko's new API key requirement. USD values on all balance cards show nothing.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Personal "My Rewards" panel**: For each signed-in voter, show a section (below the vote cards) listing:
-  - Every past vote they participated in (by voteId and vote type)
-  - Their voting power used in that vote
-  - Their estimated reward share % (winning votes only)
-  - Their estimated reward amount if pool amount is set
-  - Whether rewards have been distributed for that vote
-- **Public total distribution banner**: After each finalized vote, show a single line/card visible to ALL users saying "Total Distribution Rewards: X [ICP/BITTYICP]" — just the total pool amount, no breakdown of who gets what
+- Two new backend methods: `getIcpUsdPrice()` and `getBittyUsdPrice()` that use HTTP outcalls to fetch prices server-side
+- `http-outcalls` component to enable canister HTTP requests
+- Transform function for deterministic HTTP responses
 
 ### Modify
-- **Canister deposit address**: Make it ADMIN ONLY — only visible when `isAdmin === true`. Remove it from public view entirely.
-- **Detailed rewards pool breakdown** (voter-by-voter percentages, exact amounts to send, pool breakdowns): Visible to ADMIN ONLY. Non-admin users and non-signed-in users should NOT see this detail.
-- **RewardsPoolPanel**: 
-  - Admin sees: full breakdown, exact amounts, voter list, canister address, mark-as-distributed button
-  - Signed-in voter sees: only their own rewards panel (My Rewards) — their votes participated in, their share
-  - Public (not signed in) sees: only the "Total Distribution Rewards" total per completed vote
+- `useTokenPrices` hook in `useQueries.ts`: replace direct browser fetches with calls to the new backend methods
+- ICP/USD source: switch from CoinGecko to Coinbase API (`https://api.coinbase.com/v2/prices/ICP-USD/spot`) via backend outcall
+- BITTYICP/USD source: keep ICPSwap but route through backend outcall
 
 ### Remove
-- Canister deposit address card from public/voter view
-- Voter breakdown table from non-admin views
+- Direct browser `fetch()` calls for both prices in frontend
 
 ## Implementation Plan
-
-1. In `VotingPage.tsx`:
-   - Move canister deposit address card inside `isAdmin` guard
-   - Create a `MyRewardsPanel` component that shows a signed-in voter their own participation history and reward estimates (pulling from `voteAllocations` and `rewardsPools`)
-   - Create a `PublicRewardsBanner` component that shows just "Total Distribution Rewards: X [token]" per finalized vote — visible to everyone after a vote is finalized
-   - Modify `RewardsPoolPanel` so the detailed breakdown (voter list, exact amounts, mark distributed) is only rendered when `isAdmin === true`
-   - Add `MyRewardsPanel` below vote cards for signed-in users (non-admin)
-   - Public reward banner goes below vote cards for all users
-2. No backend changes needed — all data is already available via `getRewardsPools()` and `getVoteAllocations()`
+1. Select `http-outcalls` component
+2. Add HTTP types, management canister actor, and cycle import to main.mo
+3. Add `findAfter` text parser helper
+4. Add `transformResponse` query method (required for consensus)
+5. Add `getIcpUsdPrice()` shared method: calls Coinbase, parses `"amount":"X"` field
+6. Add `getBittyUsdPrice()` shared method: calls ICPSwap token endpoint, parses price
+7. Update both backend.d.ts files to include the two new methods
+8. Update `useTokenPrices` to call backend methods via actor instead of browser fetch

@@ -8,7 +8,6 @@ const TREASURY_WALLET =
 const FUND_WALLET =
   "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
 const NEURON_ID = "2927437143767212939";
-const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
 
 export interface Announcement {
   id: bigint;
@@ -221,47 +220,26 @@ export function useTokenPrices() {
   return useQuery<{ icpUsd: number | null; bittyUsd: number | null }>({
     queryKey: ["tokenPrices"],
     queryFn: async () => {
-      let icpUsd: number | null = null;
       try {
-        const cgRes = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=internet-computer&vs_currencies=usd",
-        );
-        if (cgRes.ok) {
-          const cgData = await cgRes.json();
-          icpUsd = cgData?.["internet-computer"]?.usd ?? null;
-        }
+        const a = (await waitForActor()) as any;
+        const [icpStr, bittyStr] = await Promise.all([
+          a.getIcpUsdPrice ? a.getIcpUsdPrice() : Promise.resolve(""),
+          a.getBittyUsdPrice ? a.getBittyUsdPrice() : Promise.resolve(""),
+        ]);
+        const icpUsd =
+          icpStr && icpStr !== "" ? Number.parseFloat(icpStr) || null : null;
+        const bittyUsd =
+          bittyStr && bittyStr !== ""
+            ? Number.parseFloat(bittyStr) || null
+            : null;
+        return { icpUsd, bittyUsd };
       } catch {
-        icpUsd = null;
+        return { icpUsd: null, bittyUsd: null };
       }
-
-      let bittyUsd: number | null = null;
-      try {
-        const allTokensRes = await fetch(
-          "https://api.icpswap.com/info/token/all",
-        );
-        if (allTokensRes.ok) {
-          const allTokensData = await allTokensRes.json();
-          const tokens = Array.isArray(allTokensData)
-            ? allTokensData
-            : (allTokensData?.data ?? []);
-          const entry = tokens.find(
-            (t: any) =>
-              t?.canisterId === BITTYICP_CANISTER ||
-              t?.address === BITTYICP_CANISTER ||
-              t?.id === BITTYICP_CANISTER,
-          );
-          if (entry?.price != null) {
-            bittyUsd = Number(entry.price);
-          }
-        }
-      } catch {
-        bittyUsd = null;
-      }
-
-      return { icpUsd, bittyUsd };
     },
     staleTime: 60_000,
-    retry: 1,
+    refetchInterval: 60_000,
+    retry: 2,
   });
 }
 

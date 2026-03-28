@@ -99,4 +99,6 @@ export interface backendInterface {
     isExternalWalletClaimed(wallet: string): Promise<boolean>;
     getWalletOwner(wallet: string): Promise<string | null>;
     updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
+    getIcpUsdPrice(): Promise<string>;
+    getBittyUsdPrice(): Promise<string>;
 }

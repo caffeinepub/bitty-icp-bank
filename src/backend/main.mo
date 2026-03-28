@@ -6,6 +6,8 @@ import Int "mo:core/Int";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Map "mo:core/Map";
+import Char "mo:core/Char";
+import Outcall "http-outcalls/outcall";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
@@ -236,6 +238,73 @@ actor {
     };
     totalDays += (day : Int) - 1;
     totalDays * 86400
+  };
+
+  //------------------------------ HTTP Price Helpers ------------------------------
+
+  // Transform function required for HTTP outcall consensus
+  public query func transformHttpResponse(input : Outcall.TransformationInput) : async Outcall.TransformationOutput {
+    Outcall.transform(input);
+  };
+
+  // Extract value after a needle, until the next double-quote character
+  func findValue(haystack : Text, needle : Text) : Text {
+    var h : [Char] = [];
+    for (c in haystack.chars()) { h := h.concat([c]) };
+    var n : [Char] = [];
+    for (c in needle.chars()) { n := n.concat([c]) };
+    let hl = h.size();
+    let nl = n.size();
+    if (nl == 0 or nl > hl) return "";
+    // Use Char.fromNat32(34) to avoid parser confusion with quote-after-operator
+    let dquote : Char = Char.fromNat32(34);
+    var i : Nat = 0;
+    while (i + nl <= hl) {
+      var j : Nat = 0;
+      var matched : Bool = true;
+      while (j < nl and matched) {
+        if (h[i + j] != n[j]) matched := false;
+        j += 1;
+      };
+      if (matched) {
+        var val : Text = "";
+        var k = i + nl;
+        while (k < hl and h[k] != dquote) {
+          val := val # Text.fromChar(h[k]);
+          k += 1;
+        };
+        return val;
+      };
+      i += 1;
+    };
+    ""
+  };
+
+  // Fetch ICP/USD price from Coinbase API via HTTP outcall
+  public shared func getIcpUsdPrice() : async Text {
+    try {
+      let body = await Outcall.httpGetRequest(
+        "https://api.coinbase.com/v2/prices/ICP-USD/spot",
+        [],
+        transformHttpResponse,
+      );
+      findValue(body, "\"amount\":\"")
+    } catch (_) { "" }
+  };
+
+  // Fetch BITTYICP/USD price from ICPSwap API via HTTP outcall
+  public shared func getBittyUsdPrice() : async Text {
+    try {
+      let body = await Outcall.httpGetRequest(
+        "https://api.icpswap.com/info/token/qroj6-lyaaa-aaaam-qeqta-cai",
+        [],
+        transformHttpResponse,
+      );
+      // Try priceUSD first, then price
+      let priceUsd = findValue(body, "\"priceUSD\":\"");
+      if (priceUsd != "") priceUsd
+      else findValue(body, "\"price\":\"")
+    } catch (_) { "" }
   };
 
   //------------------------------ User Profile ------------------------------
