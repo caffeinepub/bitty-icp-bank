@@ -3096,11 +3096,13 @@ export default function VotingPage({
           <div className="flex items-center justify-center gap-3 mb-2">
             <VoteIcon className="w-8 h-8 text-yellow-400" />
             <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
-              Community Votes
+              BITTYICP GOVERNANCE
             </h1>
           </div>
           <p className="text-gray-400 text-sm">
             Two monthly votes on how to allocate treasury funds
+            <br />
+            Or votes proposed by team
           </p>
         </motion.div>
 
@@ -3542,15 +3544,7 @@ export default function VotingPage({
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-600 pb-4">
-          © {new Date().getFullYear()}. Built with love using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-gray-400 transition-colors"
-          >
-            caffeine.ai
-          </a>
+          BITTYONICP.COM
         </div>
       </div>
 
