@@ -640,6 +640,10 @@ export class Backend implements backendInterface {
         const result = await this.actor.getWalletOwner(wallet);
         return result.length === 0 ? null : result[0];
     }
+    async verifyExternalWallet(externalWallet: string): Promise<{ ok: null } | { err: string }> {
+        const result = await this.actor.verifyExternalWallet(externalWallet);
+        return result;
+    }
 }
 function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
     return from_candid_variant_n8(_uploadFile, _downloadFile, value);
