@@ -216,26 +216,63 @@ export function useGetNeuronStake() {
   });
 }
 
+const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
+
+async function fetchIcpUsd(): Promise<number | null> {
+  // Kraken public API - CORS allowed, no API key needed
+  try {
+    const res = await fetch(
+      "https://api.kraken.com/0/public/Ticker?pair=ICPUSD",
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const price = data?.result?.ICPUSD?.c?.[0];
+      if (price) return Number.parseFloat(price) || null;
+    }
+  } catch {}
+  // Fallback: Binance
+  try {
+    const res = await fetch(
+      "https://api.binance.com/api/v3/ticker/price?symbol=ICPUSDT",
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.price) return Number.parseFloat(data.price) || null;
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchBittyUsd(): Promise<number | null> {
+  // ICPSwap token/all - CORS allowed (used by icpindex.app from browser)
+  try {
+    const res = await fetch("https://api.icpswap.com/info/token/all");
+    if (res.ok) {
+      const data = await res.json();
+      const tokens: any[] = data?.data ?? data ?? [];
+      const token = tokens.find(
+        (t: any) =>
+          t.address === BITTYICP_CANISTER || t.canisterId === BITTYICP_CANISTER,
+      );
+      if (token) {
+        const price = token.priceUSD ?? token.price ?? token.priceUsd;
+        if (price !== undefined && price !== null)
+          return Number.parseFloat(String(price)) || null;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function useTokenPrices() {
   return useQuery<{ icpUsd: number | null; bittyUsd: number | null }>({
     queryKey: ["tokenPrices"],
     queryFn: async () => {
-      try {
-        const a = (await waitForActor()) as any;
-        const [icpStr, bittyStr] = await Promise.all([
-          a.getIcpUsdPrice ? a.getIcpUsdPrice() : Promise.resolve(""),
-          a.getBittyUsdPrice ? a.getBittyUsdPrice() : Promise.resolve(""),
-        ]);
-        const icpUsd =
-          icpStr && icpStr !== "" ? Number.parseFloat(icpStr) || null : null;
-        const bittyUsd =
-          bittyStr && bittyStr !== ""
-            ? Number.parseFloat(bittyStr) || null
-            : null;
-        return { icpUsd, bittyUsd };
-      } catch {
-        return { icpUsd: null, bittyUsd: null };
-      }
+      const [icpUsd, bittyUsd] = await Promise.all([
+        fetchIcpUsd(),
+        fetchBittyUsd(),
+      ]);
+      return { icpUsd, bittyUsd };
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
