@@ -1601,10 +1601,10 @@ export default function App() {
               href="https://bittyonicp.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-base font-semibold text-gold hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 text-2xl font-bold text-gold hover:opacity-80 transition-opacity tracking-wider"
               data-ocid="footer.link"
             >
-              Bittyonicp.com <ExternalLink className="h-4 w-4" />
+              BITTYONICP.COM <ExternalLink className="h-5 w-5" />
             </a>
           </div>
         </footer>

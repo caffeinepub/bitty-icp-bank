@@ -3037,12 +3037,15 @@ export default function VotingPage({
   const latestICP = icpVotes[icpVotes.length - 1];
 
   const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
-  const upcomingBitty = bittyVotes.filter(
-    (v) => !v.isFinalized && v.openTime > nowNs,
-  );
-  const upcomingICP = icpVotes.filter(
-    (v) => !v.isFinalized && v.openTime > nowNs,
-  );
+  const upcomingBittyAll = bittyVotes
+    .filter((v) => !v.isFinalized && v.openTime > nowNs)
+    .sort((a, b) => (a.openTime < b.openTime ? -1 : 1));
+  const upcomingBitty = upcomingBittyAll.slice(0, 1);
+
+  const upcomingICPAll = icpVotes
+    .filter((v) => !v.isFinalized && v.openTime > nowNs)
+    .sort((a, b) => (a.openTime < b.openTime ? -1 : 1));
+  const upcomingICP = upcomingICPAll.slice(0, 1);
 
   return (
     <div className="min-h-screen bg-black text-white relative">
