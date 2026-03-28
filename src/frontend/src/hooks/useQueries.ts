@@ -297,3 +297,99 @@ export function useTokenPrices() {
     retry: 1,
   });
 }
+
+export function useGetAdminConfig() {
+  const { actor, isFetching } = useActor();
+  return useQuery<{ neuronTopupAddress: string; gamesWallet: string }>({
+    queryKey: ["adminConfig"],
+    queryFn: async () => {
+      if (!actor) return { neuronTopupAddress: "", gamesWallet: "" };
+      const a = actor as any;
+      if (!a.getAdminConfig) return { neuronTopupAddress: "", gamesWallet: "" };
+      return await a.getAdminConfig();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+  });
+}
+
+export function useSetGamesWallet() {
+  const qc = useQueryClient();
+  return useMutation<
+    boolean,
+    Error,
+    { password: string; addr: string; actor?: unknown }
+  >({
+    mutationFn: async ({ password, addr, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
+      return await a.setGamesWallet(password, addr);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["adminConfig"] }),
+  });
+}
+
+export function useGetRewardsPools() {
+  const { actor, isFetching } = useActor();
+  return useQuery<any[]>({
+    queryKey: ["rewardsPools"],
+    queryFn: async () => {
+      if (!actor) return [];
+      const a = actor as any;
+      if (!a.getRewardsPools) return [];
+      return await a.getRewardsPools();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkRewardsDistributed() {
+  const qc = useQueryClient();
+  return useMutation<
+    boolean,
+    Error,
+    { password: string; voteId: bigint; actor?: unknown }
+  >({
+    mutationFn: async ({ password, voteId, actor: pa }) => {
+      const a = (pa ?? (await waitForActor())) as any;
+      return await a.markRewardsDistributed(password, voteId);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rewardsPools"] }),
+  });
+}
+
+export function useGetGamesWalletBalances(gamesWallet: string) {
+  return useQuery<{ icp: bigint | null; bitty: bigint | null }>({
+    queryKey: ["gamesWalletBalances", gamesWallet],
+    queryFn: async () => {
+      if (!gamesWallet.trim()) return { icp: null, bitty: null };
+      const [icp, bitty] = await Promise.allSettled([
+        getICPBalance(gamesWallet),
+        getBITTYBalance(gamesWallet),
+      ]);
+      return {
+        icp: icp.status === "fulfilled" ? icp.value : null,
+        bitty: bitty.status === "fulfilled" ? bitty.value : null,
+      };
+    },
+    enabled: !!gamesWallet.trim(),
+    staleTime: 30_000,
+    retry: 2,
+  });
+}
+
+export function useGetVoteAllocations(voteId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<any[]>({
+    queryKey: ["voteAllocations", voteId?.toString()],
+    queryFn: async () => {
+      if (!actor || voteId === null) return [];
+      const a = actor as any;
+      if (!a.getVoteAllocations) return [];
+      return await a.getVoteAllocations(voteId);
+    },
+    enabled: !!actor && !isFetching && voteId !== null,
+    staleTime: 30_000,
+  });
+}

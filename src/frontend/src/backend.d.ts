@@ -12,7 +12,7 @@ export interface ChatMessage {
     author: string;
     message: string;
     timestamp: bigint;
-    proposalId: bigint;
+    voteId: bigint;
 }
 export interface Announcement {
     id: bigint;
@@ -20,20 +20,37 @@ export interface Announcement {
     body: string;
     timestamp: bigint;
 }
-export interface Vote {
-    weight: bigint;
-    optionIndex: bigint;
-    proposalId: bigint;
-    voterPrincipal: string;
-}
-export interface Proposal {
+export type VoteType = { ICP: null } | { BITTYICP: null };
+export interface MonthlyVote {
     id: bigint;
-    startTime: bigint;
-    title: string;
-    endTime: bigint;
-    description: string;
-    isOpen: boolean;
-    options: Array<string>;
+    voteType: VoteType;
+    month: bigint;
+    year: bigint;
+    openTime: bigint;
+    closeTime: bigint;
+    isFinalized: boolean;
+    totalVoteAmount: string;
+}
+export interface VoteAllocation {
+    voteId: bigint;
+    voterPrincipal: string;
+    pctA: bigint;
+    pctB: bigint;
+    pctC: bigint;
+    votingPower: bigint;
+}
+export interface RewardsPoolEntry {
+    voteId: bigint;
+    voteType: VoteType;
+    losingOptionLabel: string;
+    losingOptionPct: bigint;
+    poolAmount: string;
+    distributed: boolean;
+}
+export interface VoteResult {
+    optionLabel: string;
+    totalWeightedPct: bigint;
+    voterCount: bigint;
 }
 export interface UserProfile {
     name: string;
@@ -45,31 +62,33 @@ export enum UserRole {
 }
 export interface backendInterface {
     addAnnouncement(password: string, title: string, body: string): Promise<Announcement | null>;
-    addChatMessage(proposalId: bigint, author: string, message: string): Promise<ChatMessage | null>;
+    addChatMessage(voteId: bigint, author: string, message: string): Promise<ChatMessage | null>;
     adminLogin(password: string): Promise<boolean>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    castVote(proposalId: bigint, voterPrincipal: string, optionIndex: bigint, weight: bigint): Promise<boolean>;
-    closeProposal(password: string, proposalId: bigint): Promise<boolean>;
-    createProposal(password: string, title: string, description: string, options: Array<string>): Promise<Proposal | null>;
+    castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean>;
     deleteAnnouncement(password: string, id: bigint): Promise<boolean>;
+    finalizeVote(password: string, voteId: bigint): Promise<boolean>;
+    getActiveVotes(): Promise<Array<MonthlyVote>>;
+    getAllVotes(): Promise<Array<MonthlyVote>>;
+    getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }>;
     getAnnouncements(): Promise<Array<Announcement>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getChatMessages(proposalId: bigint): Promise<Array<ChatMessage>>;
-    getManualBalances(): Promise<{
-        icp: string;
-        fund: string;
-        bittyPriceUsd: string;
-        bitty: string;
-    }>;
-    getProposals(): Promise<Array<Proposal>>;
+    getChatMessages(voteId: bigint): Promise<Array<ChatMessage>>;
+    getManualBalances(): Promise<{ icp: string; fund: string; bittyPriceUsd: string; bitty: string }>;
+    getRewardsPools(): Promise<Array<RewardsPoolEntry>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
-    getVotesForProposal(proposalId: bigint): Promise<Array<Vote>>;
-    hasVoted(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    getVoteAllocations(voteId: bigint): Promise<Array<VoteAllocation>>;
+    getVoteResults(voteId: bigint): Promise<Array<VoteResult>>;
+    hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean>;
     isCallerAdmin(): Promise<boolean>;
+    markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    setGamesWallet(password: string, addr: string): Promise<boolean>;
     setManualBalances(password: string, icp: string, bitty: string): Promise<boolean>;
     setManualBittyPrice(password: string, price: string): Promise<boolean>;
     setManualFundBalance(password: string, fund: string): Promise<boolean>;
+    setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
+    setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
     updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
 }

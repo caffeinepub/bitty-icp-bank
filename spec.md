@@ -1,31 +1,44 @@
 # BITTY ICP BANK
 
 ## Current State
-The voting page has a sign-in flow: user clicks Internet Identity, then manually pastes their principal ID, clicks Check to verify BITTYICP balance. Anyone can paste any principal -- not just their own wallet.
+
+The voting page (`VotingPage.tsx`) has:
+- Two monthly vote cards for ICP and BITTYICP treasury
+- A RewardsPoolPanel showing pool breakdowns including voter-by-voter breakdown
+- A canister deposit address card that appears to be visible to everyone
+- No separation between admin-only content and public/voter content in the rewards section
+- No personal "My Rewards" panel per voter
 
 ## Requested Changes (Diff)
 
 ### Add
-- Plug wallet sign-in option alongside Internet Identity
-- Fine print under each button: II = 'Supports NNS, Oisy, NFID, and any Internet Identity-based wallet'; Plug = 'Supports Plug browser extension wallet'
-- After sign-in (either method), auto-use the authenticated principal (no paste input)
-- Auto-check BITTYICP balance immediately on sign-in
+- **Personal "My Rewards" panel**: For each signed-in voter, show a section (below the vote cards) listing:
+  - Every past vote they participated in (by voteId and vote type)
+  - Their voting power used in that vote
+  - Their estimated reward share % (winning votes only)
+  - Their estimated reward amount if pool amount is set
+  - Whether rewards have been distributed for that vote
+- **Public total distribution banner**: After each finalized vote, show a single line/card visible to ALL users saying "Total Distribution Rewards: X [ICP/BITTYICP]" — just the total pool amount, no breakdown of who gets what
 
 ### Modify
-- Replace single sign-in button with two options (II + Plug) with fine print
-- Replace principalInput state with authenticatedPrincipal derived from active session
-- Auto-trigger balance check via useEffect when authenticatedPrincipal changes
-- Update vote casting to use authenticatedPrincipal directly
-- Update How It Works step to say 'connect your wallet' instead of paste principal
+- **Canister deposit address**: Make it ADMIN ONLY — only visible when `isAdmin === true`. Remove it from public view entirely.
+- **Detailed rewards pool breakdown** (voter-by-voter percentages, exact amounts to send, pool breakdowns): Visible to ADMIN ONLY. Non-admin users and non-signed-in users should NOT see this detail.
+- **RewardsPoolPanel**: 
+  - Admin sees: full breakdown, exact amounts, voter list, canister address, mark-as-distributed button
+  - Signed-in voter sees: only their own rewards panel (My Rewards) — their votes participated in, their share
+  - Public (not signed in) sees: only the "Total Distribution Rewards" total per completed vote
 
 ### Remove
-- Manual paste principal ID input field
-- Manual Check balance button
+- Canister deposit address card from public/voter view
+- Voter breakdown table from non-admin views
 
 ## Implementation Plan
-1. Add Plug wallet logic via window.ic?.plug API (detect, connect, get principal)
-2. Add plugPrincipal/plugConnected state; create unified activePrincipal
-3. Two-button sign-in layout with fine print under each
-4. useEffect auto-triggers balance check when activePrincipal changes
-5. Remove paste input + Check button
-6. Update vote casting and chat to use activePrincipal
+
+1. In `VotingPage.tsx`:
+   - Move canister deposit address card inside `isAdmin` guard
+   - Create a `MyRewardsPanel` component that shows a signed-in voter their own participation history and reward estimates (pulling from `voteAllocations` and `rewardsPools`)
+   - Create a `PublicRewardsBanner` component that shows just "Total Distribution Rewards: X [token]" per finalized vote — visible to everyone after a vote is finalized
+   - Modify `RewardsPoolPanel` so the detailed breakdown (voter list, exact amounts, mark distributed) is only rendered when `isAdmin === true`
+   - Add `MyRewardsPanel` below vote cards for signed-in users (non-admin)
+   - Public reward banner goes below vote cards for all users
+2. No backend changes needed — all data is already available via `getRewardsPools()` and `getVoteAllocations()`

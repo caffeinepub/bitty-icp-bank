@@ -15,11 +15,14 @@ import {
   useAddAnnouncement,
   useAdminLogin,
   useDeleteAnnouncement,
+  useGetAdminConfig,
   useGetAnnouncements,
   useGetFundBalance,
+  useGetGamesWalletBalances,
   useGetLiveBalances,
   useGetManualBalances,
   useGetNeuronStake,
+  useSetGamesWallet,
   useSetManualBalances,
   useSetManualBittyPrice,
   useSetManualFundBalance,
@@ -33,6 +36,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Gamepad2,
   HelpCircle,
   Landmark,
   Loader2,
@@ -51,7 +55,6 @@ import VotingPage from "./VotingPage";
 
 const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
-const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
 const FUND_WALLET =
   "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
 const NEURON_ID = "2927437143767212939";
@@ -247,7 +250,9 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const setManual = useSetManualBalances();
   const setManualFundBalance = useSetManualFundBalance();
   const setManualBittyPriceMutation = useSetManualBittyPrice();
+  const setGamesWalletMutation = useSetGamesWallet();
   const [manualBittyPrice, setManualBittyPrice] = useState("");
+  const [gamesWalletInput, setGamesWalletInput] = useState("");
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
@@ -360,6 +365,30 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     }
   }
 
+  async function handleSaveGamesWallet() {
+    const trimmed = gamesWalletInput.trim();
+    if (!trimmed) {
+      toast.error("Enter a wallet address");
+      return;
+    }
+    try {
+      await setGamesWalletMutation.mutateAsync({ password, addr: trimmed });
+      toast.success("Games wallet address saved!");
+      setGamesWalletInput("");
+    } catch {
+      toast.error("Failed to save games wallet");
+    }
+  }
+
+  async function handleClearGamesWallet() {
+    try {
+      await setGamesWalletMutation.mutateAsync({ password, addr: "" });
+      toast.success("Games wallet cleared");
+      setGamesWalletInput("");
+    } catch {
+      toast.error("Failed to clear");
+    }
+  }
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -585,6 +614,55 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
         </div>
       </div>
 
+      {/* Games & Development Wallet */}
+      <div className="glass-card-gold rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
+          Games & Development Wallet
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Set the wallet address for the Games & Development fund. When set,
+          live balances will display on the main page.
+        </p>
+        <div className="space-y-1">
+          <label
+            htmlFor="games-wallet"
+            className="text-xs text-muted-foreground"
+          >
+            Wallet Address
+          </label>
+          <Input
+            id="games-wallet"
+            placeholder="Paste wallet address..."
+            value={gamesWalletInput}
+            onChange={(e) => setGamesWalletInput(e.target.value)}
+            className="bg-secondary/50 border-border font-mono text-xs"
+            data-ocid="admin.games_wallet.input"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleSaveGamesWallet}
+            disabled={setGamesWalletMutation.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="admin.games_wallet.save_button"
+          >
+            {setGamesWalletMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save Wallet
+          </Button>
+          <Button
+            onClick={handleClearGamesWallet}
+            disabled={setGamesWalletMutation.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="admin.games_wallet.clear_button"
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
       {/* Existing Announcements */}
       <div className="space-y-3">
         <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-muted-foreground">
@@ -833,6 +911,9 @@ export default function App() {
   const manualBalances = useGetManualBalances();
   const announcements = useGetAnnouncements();
   const tokenPrices = useTokenPrices();
+  const adminConfig = useGetAdminConfig();
+  const gamesWallet = adminConfig.data?.gamesWallet ?? "";
+  const gamesBalances = useGetGamesWalletBalances(gamesWallet);
 
   const isAdmin = !!adminPassword;
 
@@ -1090,15 +1171,6 @@ export default function App() {
                 </p>
                 <CopyableId value={TREASURY_WALLET} label="Wallet Address" />
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">
-                  $BITTYICP Canister ID
-                </p>
-                <CopyableId
-                  value={BITTYICP_CANISTER}
-                  label="BITTYICP Canister ID"
-                />
-              </div>
             </div>
           </section>
 
@@ -1290,6 +1362,99 @@ export default function App() {
             </motion.div>
           </section>
 
+          {/* Games & Development Wallet */}
+          <section data-ocid="games.section">
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              Games &amp; Development Wallet
+            </h2>
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
+              data-ocid="games.card"
+            >
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                  <Gamepad2 className="h-6 w-6 text-gold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  {!gamesWallet ? (
+                    <div>
+                      <div className="text-2xl font-heading font-bold text-gold/60">
+                        COMING SOON
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Wallet address not yet configured
+                      </div>
+                    </div>
+                  ) : gamesBalances.isLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                      balances...
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                          $ICP Balance
+                        </div>
+                        <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                          {gamesBalances.data?.icp != null ? (
+                            formatBalance(gamesBalances.data.icp)
+                          ) : (
+                            <span className="opacity-40 text-xl">
+                              Unavailable
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                          $BITTYICP Balance
+                        </div>
+                        <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                          {gamesBalances.data?.bitty != null ? (
+                            formatBalance(gamesBalances.data.bitty)
+                          ) : (
+                            <span className="opacity-40 text-xl">
+                              Unavailable
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                This wallet receives{" "}
+                <span className="text-gold font-semibold">$BITTYICP</span> when
+                the community votes to send treasury funds to Games &amp;
+                Development. Funds here are used to grow the{" "}
+                <span className="text-gold font-semibold">BITTY ON ICP</span>{" "}
+                ecosystem through new games, tools, and development initiatives.
+              </p>
+              {gamesWallet && (
+                <>
+                  <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                      Wallet Address
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Copy to verify on-chain
+                    </p>
+                    <CopyableId
+                      value={gamesWallet}
+                      label="Games Wallet Address"
+                    />
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </section>
           {/* Announcements */}
           <section>
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">

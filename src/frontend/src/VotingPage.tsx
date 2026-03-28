@@ -3,9 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import {
+  useGetRewardsPools,
+  useGetVoteAllocations,
+  useMarkRewardsDistributed,
+} from "@/hooks/useQueries";
 import { getBITTYBalance } from "@/utils/ledgerActors";
 import {
   ArrowLeft,
@@ -13,21 +19,26 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Copy,
+  Gift,
   HelpCircle,
   Loader2,
+  LogIn,
   LogOut,
   MessageSquare,
-  Plus,
   Send,
   ShieldCheck,
-  Users,
+  Trophy,
   Vote as VoteIcon,
   Wallet,
-  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
+import type { MonthlyVote, RewardsPoolEntry, VoteResult } from "./backend.d";
+import { loadConfig } from "./config";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 declare global {
   interface Window {
@@ -42,26 +53,9 @@ declare global {
   }
 }
 
-interface ProposalData {
-  id: bigint;
-  title: string;
-  description: string;
-  options: string[];
-  startTime: bigint;
-  endTime: bigint;
-  isOpen: boolean;
-}
-
-interface VoteData {
-  proposalId: bigint;
-  voterPrincipal: string;
-  optionIndex: bigint;
-  weight: bigint;
-}
-
 interface ChatMsg {
   id: bigint;
-  proposalId: bigint;
+  voteId: bigint;
   author: string;
   message: string;
   timestamp: bigint;
@@ -72,6 +66,14 @@ interface VotingPageProps {
   isAdmin: boolean;
   adminPassword: string;
 }
+
+interface SplitAllocation {
+  pctA: number;
+  pctB: number;
+  pctC: number;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeRemaining(endTime: bigint): string {
   const now = BigInt(Date.now()) * BigInt(1_000_000);
@@ -93,57 +95,192 @@ function formatTimestamp(ts: bigint): string {
   });
 }
 
+function getVoteOptions(vote: MonthlyVote): [string, string, string] {
+  if ("ICP" in vote.voteType) {
+    return [
+      "BUY $BITTYICP & STORE IN TREASURY",
+      "INVEST INTO NEURON",
+      "HOLD FOR LATER VOTE",
+    ];
+  }
+  return ["BURN $BITTYICP", "SEND TO GAMES/DEV WALLET", "HOLD FOR LATER VOTE"];
+}
+
+function getVoteStatusInfo(vote: MonthlyVote): {
+  label: string;
+  color: string;
+} {
+  const now = BigInt(Date.now()) * BigInt(1_000_000);
+  if (vote.isFinalized)
+    return { label: "FINALIZED", color: "text-purple-400 border-purple-400" };
+  if (now < vote.openTime)
+    return { label: "UPCOMING", color: "text-blue-400 border-blue-400" };
+  if (now > vote.closeTime)
+    return { label: "CLOSED", color: "text-red-400 border-red-400" };
+  return { label: "OPEN", color: "text-green-400 border-green-400" };
+}
+
+function isVoteOpen(vote: MonthlyVote): boolean {
+  const now = BigInt(Date.now()) * BigInt(1_000_000);
+  return now >= vote.openTime && now <= vote.closeTime && !vote.isFinalized;
+}
+
+// ─── HowItWorks ──────────────────────────────────────────────────────────────
+
 function HowItWorksSection() {
   const [open, setOpen] = useState(false);
   const items = [
     {
       icon: "🪙",
       title: "Minimum 1,000 $BITTYICP required",
-      desc: "You must hold at least 1,000 $BITTYICP tokens in your wallet to participate in voting. This ensures only genuine community members vote.",
+      desc: "You must hold at least 1,000 $BITTYICP to vote. This ensures only genuine community members participate.",
     },
     {
       icon: "⚡",
       title: "Voting Power = BITTYICP ÷ 1,000",
-      desc: "Every 1,000 $BITTYICP gives you 1 vote. Hold 10,000 BITTYICP? You cast 10 votes. More skin in the game = more say.",
+      desc: "Every 1,000 $BITTYICP gives you 1 vote. Hold 10,000? You have 10 votes. More tokens = more influence.",
     },
     {
-      icon: "🔐",
-      title: "Connect your wallet to prove ownership",
-      desc: "Connect your wallet (Internet Identity or Plug) to prove you own the address. The app automatically reads your principal and checks your $BITTYICP balance — no copy-pasting needed.",
+      icon: "🎚️",
+      title: "Split your 100% across options",
+      desc: "Instead of picking one option, you allocate percentages across all three choices totalling exactly 100%. E.g. 60% Option A, 30% Option B, 10% Option C.",
     },
     {
       icon: "📅",
-      title: "7-Day Voting Window",
-      desc: "Each proposal stays open for a full 7 days so all investors have time to review and cast their vote.",
+      title: "Two monthly votes",
+      desc: "$BITTYICP vote opens on the 15th of each month. $ICP vote opens on the last day. Both run for 7 days.",
     },
     {
-      icon: "📊",
-      title: "Live Results",
-      desc: "Vote tallies update in real-time. Anyone can view results — only eligible BITTYICP holders can vote.",
+      icon: "🏆",
+      title: "Rewards pool from the losing option",
+      desc: "After voting closes, the lowest-voted option's percentage goes into a rewards pool. Admin distributes it proportionally to all voters based on their voting power.",
     },
     {
-      icon: "💬",
-      title: "Community Chat",
-      desc: "Each proposal has a dedicated chat so the community can discuss before voting. Requires wallet sign-in.",
+      icon: "🔐",
+      title: "Sign in to prove wallet ownership",
+      desc: "Connect with Internet Identity or Plug Wallet. Your principal is read automatically — no pasting needed.",
     },
   ];
-
   return (
-    <div className="glass-card border border-[oklch(0.87_0.17_90/0.25)] rounded-2xl overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm overflow-hidden"
+    >
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-[oklch(0.87_0.17_90/0.05)] transition-colors"
         data-ocid="how_it_works.toggle"
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/5 transition-colors"
       >
-        <div className="flex items-center gap-2 text-gold font-heading font-bold tracking-wide">
-          <HelpCircle className="h-5 w-5" />
-          <span>How Voting Works</span>
+        <div className="flex items-center gap-3">
+          <HelpCircle className="w-5 h-5 text-yellow-400" />
+          <span className="font-semibold text-yellow-300">
+            How Voting Works
+          </span>
         </div>
         {open ? (
-          <ChevronUp className="h-5 w-5 text-gold" />
+          <ChevronUp className="w-4 h-4 text-yellow-400" />
         ) : (
-          <ChevronDown className="h-5 w-5 text-gold" />
+          <ChevronDown className="w-4 h-4 text-yellow-400" />
+        )}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="px-6 pb-6 grid gap-3 sm:grid-cols-2">
+              {items.map((item) => (
+                <div
+                  key={item.title}
+                  className="flex gap-3 p-3 rounded-xl bg-white/5 border border-yellow-600/20"
+                >
+                  <span className="text-2xl">{item.icon}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-300">
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// ─── ChatSection ─────────────────────────────────────────────────────────────
+
+function ChatSection({
+  voteId,
+  principal,
+  actor,
+}: {
+  voteId: bigint;
+  principal: string | null;
+  actor: any;
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [open, setOpen] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const loadMessages = useCallback(async () => {
+    if (!actor) return;
+    try {
+      const msgs = await actor.getChatMessages(voteId);
+      setMessages(msgs as ChatMsg[]);
+    } catch {}
+  }, [actor, voteId]);
+
+  useEffect(() => {
+    if (!open) return;
+    loadMessages();
+    const interval = setInterval(loadMessages, 10000);
+    return () => clearInterval(interval);
+  }, [open, loadMessages]);
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function sendMessage() {
+    if (!text.trim() || !principal || !actor) return;
+    setSending(true);
+    try {
+      await actor.addChatMessage(voteId, principal, text.trim());
+      setText("");
+      await loadMessages();
+    } catch {
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-yellow-600/20 pt-4">
+      <button
+        type="button"
+        data-ocid="chat.toggle"
+        onClick={() => setOpen((p) => !p)}
+        className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 text-sm font-medium transition-colors"
+      >
+        <MessageSquare className="w-4 h-4" />
+        Community Chat
+        {open ? (
+          <ChevronUp className="w-3 h-3" />
+        ) : (
+          <ChevronDown className="w-3 h-3" />
         )}
       </button>
       <AnimatePresence>
@@ -155,22 +292,68 @@ function HowItWorksSection() {
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-6 pb-6 space-y-4 text-sm text-muted-foreground border-t border-[oklch(0.87_0.17_90/0.15)]">
-              <div className="grid gap-3 pt-4">
-                {items.map((item) => (
-                  <div key={item.title} className="flex gap-3">
-                    <span className="text-xl mt-0.5">{item.icon}</span>
-                    <div>
-                      <p className="font-semibold text-foreground">
-                        {item.title}
-                      </p>
-                      <p className="text-muted-foreground text-xs leading-relaxed mt-0.5">
-                        {item.desc}
-                      </p>
+            <div
+              className="mt-3 bg-black/30 rounded-xl border border-yellow-600/20 flex flex-col"
+              style={{ maxHeight: 280 }}
+            >
+              <div
+                className="flex-1 overflow-y-auto p-3 space-y-2"
+                style={{ minHeight: 100 }}
+              >
+                {messages.length === 0 && (
+                  <p className="text-xs text-gray-500 text-center py-4">
+                    No messages yet. Be the first!
+                  </p>
+                )}
+                {messages.map((m) => (
+                  <div key={String(m.id)} className="flex gap-2">
+                    <div className="flex-1">
+                      <span className="text-yellow-400 text-xs font-mono">
+                        {m.author.slice(0, 8)}…
+                      </span>
+                      <span className="text-gray-500 text-xs ml-2">
+                        {formatTimestamp(m.timestamp)}
+                      </span>
+                      <p className="text-gray-200 text-sm">{m.message}</p>
                     </div>
                   </div>
                 ))}
+                <div ref={bottomRef} />
               </div>
+              {principal ? (
+                <div className="flex gap-2 p-2 border-t border-yellow-600/20">
+                  <Textarea
+                    data-ocid="chat.textarea"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Say something..."
+                    className="text-sm resize-none bg-black/40 border-yellow-600/30 text-gray-200 placeholder-gray-600 min-h-0 h-9 py-1.5"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
+                  />
+                  <Button
+                    data-ocid="chat.submit_button"
+                    size="sm"
+                    onClick={sendMessage}
+                    disabled={sending || !text.trim()}
+                    className="bg-yellow-600 hover:bg-yellow-500 text-black h-9 px-3"
+                  >
+                    {sending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Send className="w-3 h-3" />
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 text-center py-2">
+                  Sign in to chat
+                </p>
+              )}
             </div>
           </motion.div>
         )}
@@ -179,364 +362,1256 @@ function HowItWorksSection() {
   );
 }
 
-function ProposalCard({
-  proposal,
-  onClick,
+// ─── SplitVotingUI ───────────────────────────────────────────────────────────
+
+function SplitVotingUI({
+  options,
+  onSubmit,
+  submitting,
 }: {
-  proposal: ProposalData;
-  onClick: () => void;
+  options: [string, string, string];
+  onSubmit: (alloc: SplitAllocation) => void;
+  submitting: boolean;
 }) {
-  const isExpired = BigInt(Date.now()) * BigInt(1_000_000) > proposal.endTime;
-  const isOpen = proposal.isOpen && !isExpired;
+  const [pctA, setPctA] = useState(34);
+  const [pctB, setPctB] = useState(33);
+  const [pctC, setPctC] = useState(33);
+
+  const total = pctA + pctB + pctC;
+  const remaining = 100 - total;
+  const isValid = total === 100;
+
+  function handleA(val: number) {
+    const newA = Math.min(100, Math.max(0, val));
+    let newB = pctB;
+    let newC = pctC;
+    const slack = 100 - newA;
+    if (newB + newC > slack) {
+      const excess = newB + newC - slack;
+      newC = Math.max(0, newC - excess);
+      if (newB + newC > slack) newB = Math.max(0, slack - newC);
+    }
+    setPctA(newA);
+    setPctB(newB);
+    setPctC(newC);
+  }
+
+  function handleB(val: number) {
+    const newB = Math.min(100, Math.max(0, val));
+    let newA = pctA;
+    let newC = pctC;
+    const slack = 100 - newB;
+    if (newA + newC > slack) {
+      const excess = newA + newC - slack;
+      newC = Math.max(0, newC - excess);
+      if (newA + newC > slack) newA = Math.max(0, slack - newC);
+    }
+    setPctB(newB);
+    setPctA(newA);
+    setPctC(newC);
+  }
+
+  function handleC(val: number) {
+    const newC = Math.min(100, Math.max(0, val));
+    let newA = pctA;
+    let newB = pctB;
+    const slack = 100 - newC;
+    if (newA + newB > slack) {
+      const excess = newA + newB - slack;
+      newB = Math.max(0, newB - excess);
+      if (newA + newB > slack) newA = Math.max(0, slack - newB);
+    }
+    setPctC(newC);
+    setPctA(newA);
+    setPctB(newB);
+  }
+
+  const sliders = [
+    {
+      label: options[0],
+      pct: pctA,
+      onChange: handleA,
+      color: "from-yellow-500 to-yellow-400",
+    },
+    {
+      label: options[1],
+      pct: pctB,
+      onChange: handleB,
+      color: "from-amber-500 to-amber-400",
+    },
+    {
+      label: options[2],
+      pct: pctC,
+      onChange: handleC,
+      color: "from-orange-500 to-orange-400",
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {sliders.map((s) => (
+        <div key={s.label}>
+          <div className="flex justify-between mb-1">
+            <span className="text-xs text-yellow-300 font-medium truncate max-w-[70%]">
+              {s.label}
+            </span>
+            <span className="text-sm font-bold text-white">{s.pct}%</span>
+          </div>
+          <Slider
+            min={0}
+            max={100}
+            step={1}
+            value={[s.pct]}
+            onValueChange={([v]) => s.onChange(v)}
+            className="cursor-pointer"
+          />
+          <div className="mt-1 h-1.5 rounded-full overflow-hidden bg-white/10">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r ${s.color} transition-all`}
+              style={{ width: `${s.pct}%` }}
+            />
+          </div>
+        </div>
+      ))}
+
+      <div
+        className={`flex items-center justify-between px-3 py-2 rounded-lg border ${isValid ? "border-green-500/50 bg-green-500/10" : "border-red-500/50 bg-red-500/10"}`}
+      >
+        <span className="text-sm">Total allocated</span>
+        <span
+          className={`font-bold text-lg ${isValid ? "text-green-400" : "text-red-400"}`}
+        >
+          {total}%
+        </span>
+      </div>
+      {!isValid && (
+        <p className="text-xs text-red-400 text-center">
+          {remaining > 0
+            ? `${remaining}% remaining to allocate`
+            : `Over by ${-remaining}% — adjust sliders`}
+        </p>
+      )}
+
+      <Button
+        data-ocid="vote.submit_button"
+        className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold py-3 disabled:opacity-50"
+        disabled={!isValid || submitting}
+        onClick={() => onSubmit({ pctA, pctB, pctC })}
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Submitting…
+          </>
+        ) : (
+          <>
+            <VoteIcon className="w-4 h-4 mr-2" />
+            Submit Vote
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─── VoteCard ────────────────────────────────────────────────────────────────
+
+function VoteCard({
+  vote,
+  principal,
+  votingPower,
+  actor,
+  isAdmin,
+  adminPassword,
+}: {
+  vote: MonthlyVote;
+  principal: string | null;
+  votingPower: number;
+  actor: any;
+  isAdmin: boolean;
+  adminPassword: string;
+}) {
+  const isICP = "ICP" in vote.voteType;
+  const options = getVoteOptions(vote);
+  const status = getVoteStatusInfo(vote);
+  const open = isVoteOpen(vote);
+
+  const [results, setResults] = useState<VoteResult[]>([]);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [myAllocation, setMyAllocation] = useState<{
+    pctA: number;
+    pctB: number;
+    pctC: number;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingResults, setLoadingResults] = useState(true);
+  const [voteAmountInput, setVoteAmountInput] = useState("");
+  const [savingAmount, setSavingAmount] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+
+  const loadData = useCallback(async () => {
+    if (!actor) return;
+    try {
+      const [res, voted] = await Promise.all([
+        actor.getVoteResults(vote.id),
+        principal
+          ? actor.hasVotedOnVote(vote.id, principal)
+          : Promise.resolve(false),
+      ]);
+      setResults(res);
+      setHasVoted(voted);
+      if (voted && principal) {
+        const allocs = await actor.getVoteAllocations(vote.id);
+        const mine = allocs.find((a) => a.voterPrincipal === principal);
+        if (mine) {
+          setMyAllocation({
+            pctA: Number(mine.pctA),
+            pctB: Number(mine.pctB),
+            pctC: Number(mine.pctC),
+          });
+        }
+      }
+    } catch {
+    } finally {
+      setLoadingResults(false);
+    }
+  }, [actor, vote.id, principal]);
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 15000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  async function submitVote(alloc: SplitAllocation) {
+    if (!principal || !actor) return;
+    if (votingPower < 1) {
+      toast.error("You need at least 1,000 $BITTYICP to vote.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const ok = await actor.castSplitVote(
+        vote.id,
+        principal,
+        BigInt(alloc.pctA),
+        BigInt(alloc.pctB),
+        BigInt(alloc.pctC),
+        BigInt(votingPower),
+      );
+      if (ok) {
+        toast.success("Vote submitted!");
+        setHasVoted(true);
+        setMyAllocation(alloc);
+        await loadData();
+      } else {
+        toast.error("Vote failed — you may have already voted.");
+      }
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function saveVoteAmount() {
+    if (!actor || !voteAmountInput.trim()) return;
+    setSavingAmount(true);
+    try {
+      const ok = await actor.setVoteAmount(
+        adminPassword,
+        vote.id,
+        voteAmountInput.trim(),
+      );
+      if (ok) toast.success("Vote amount saved!");
+      else toast.error("Failed to save amount.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setSavingAmount(false);
+    }
+  }
+
+  async function finalizeVote() {
+    if (!actor) return;
+    setFinalizing(true);
+    try {
+      const ok = await actor.finalizeVote(adminPassword, vote.id);
+      if (ok) {
+        toast.success("Vote finalized! Rewards pool created.");
+        await loadData();
+      } else {
+        toast.error("Failed to finalize.");
+      }
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
+  const month = new Date(
+    Number(vote.year),
+    Number(vote.month) - 1,
+  ).toLocaleString("default", { month: "long", year: "numeric" });
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
-      transition={{ duration: 0.2 }}
-      onClick={onClick}
-      className="glass-card border border-[oklch(0.87_0.17_90/0.25)] rounded-2xl p-5 cursor-pointer hover:border-[oklch(0.87_0.17_90/0.5)] hover:bg-[oklch(0.87_0.17_90/0.05)] transition-all"
+      transition={{ duration: 0.4 }}
+      className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm overflow-hidden"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Badge
-              className={
-                isOpen
-                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs"
-                  : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30 text-xs"
-              }
-            >
-              {isOpen ? "OPEN" : "CLOSED"}
-            </Badge>
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-yellow-600/20 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            {isICP ? (
+              <span className="text-2xl">⚡</span>
+            ) : (
+              <span className="text-2xl">🔥</span>
+            )}
+            <h3 className="text-lg font-bold text-yellow-300">
+              {isICP ? "$ICP Treasury Vote" : "$BITTYICP Treasury Vote"}
+            </h3>
           </div>
-          <h3 className="font-heading font-bold text-foreground text-base leading-tight">
-            {proposal.title}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-            {proposal.description}
+          <p className="text-sm text-gray-400">
+            {month} ·{" "}
+            {isICP ? "Opens last day of month" : "Opens 15th of month"}
           </p>
+          {vote.totalVoteAmount && vote.totalVoteAmount !== "0" && (
+            <p className="text-xs text-yellow-500 mt-1">
+              Voting on: {vote.totalVoteAmount} {isICP ? "ICP" : "BITTYICP"}
+            </p>
+          )}
         </div>
-        <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
+        <div className="flex flex-col items-end gap-1">
+          <span
+            className={`text-xs font-bold border px-2 py-0.5 rounded-full ${status.color}`}
+          >
+            {status.label}
+          </span>
+          {open && (
+            <span className="text-xs text-gray-400 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {timeRemaining(vote.closeTime)}
+            </span>
+          )}
+        </div>
       </div>
-      <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="h-3.5 w-3.5" />
-          {timeRemaining(proposal.endTime)}
-        </span>
-        <span className="flex items-center gap-1">
-          <VoteIcon className="h-3.5 w-3.5" />
-          {proposal.options.length} options
-        </span>
+
+      <div className="p-6 space-y-6">
+        {/* Live Results */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Live Results
+          </p>
+          {loadingResults ? (
+            <div className="flex items-center gap-2 text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+            </div>
+          ) : results.length === 0 ? (
+            <p className="text-sm text-gray-500">No votes yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {results.map((r, i) => {
+                const pct = Number(r.totalWeightedPct);
+                const voters = Number(r.voterCount);
+                const barColors = [
+                  "bg-yellow-500",
+                  "bg-amber-500",
+                  "bg-orange-500",
+                ];
+                return (
+                  <div key={r.optionLabel}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-300 font-medium truncate max-w-[60%]">
+                        {r.optionLabel}
+                      </span>
+                      <span className="text-yellow-300 font-bold">
+                        {pct.toFixed(1)}% · {voters} voter
+                        {voters !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <motion.div
+                        className={`h-full rounded-full ${barColors[i % barColors.length]}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.6, delay: i * 0.1 }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Voting UI */}
+        {open && principal && (
+          <div className="border-t border-yellow-600/20 pt-4">
+            {hasVoted ? (
+              <div
+                data-ocid="vote.success_state"
+                className="flex items-start gap-3 bg-green-500/10 border border-green-500/30 rounded-xl p-4"
+              >
+                <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-green-300">
+                    You've voted!
+                  </p>
+                  {myAllocation && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {options[0]}: {myAllocation.pctA}% · {options[1]}:{" "}
+                      {myAllocation.pctB}% · {options[2]}: {myAllocation.pctC}%
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Voting power used: {votingPower}
+                  </p>
+                </div>
+              </div>
+            ) : votingPower >= 1 ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                  Cast Your Vote · Power: {votingPower}
+                </p>
+                <SplitVotingUI
+                  options={options}
+                  onSubmit={submitVote}
+                  submitting={submitting}
+                />
+              </div>
+            ) : (
+              <div
+                data-ocid="vote.error_state"
+                className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-sm text-red-300"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                You need at least 1,000 $BITTYICP to vote.
+              </div>
+            )}
+          </div>
+        )}
+
+        {open && !principal && (
+          <div className="border-t border-yellow-600/20 pt-4 text-center">
+            <p className="text-sm text-gray-400">
+              Sign in above to cast your vote.
+            </p>
+          </div>
+        )}
+
+        {/* Admin Controls */}
+        {isAdmin && (
+          <div className="border-t border-yellow-600/20 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-yellow-500 uppercase tracking-wider">
+              Admin Controls
+            </p>
+            <div className="flex gap-2">
+              <Input
+                data-ocid="vote.input"
+                value={voteAmountInput}
+                onChange={(e) => setVoteAmountInput(e.target.value)}
+                placeholder={`Set ${isICP ? "ICP" : "BITTYICP"} amount being voted on`}
+                className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
+              />
+              <Button
+                data-ocid="vote.save_button"
+                size="sm"
+                onClick={saveVoteAmount}
+                disabled={savingAmount}
+                className="bg-yellow-600 hover:bg-yellow-500 text-black whitespace-nowrap"
+              >
+                {savingAmount ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Set Amount"
+                )}
+              </Button>
+            </div>
+            {!vote.isFinalized && (
+              <Button
+                data-ocid="vote.confirm_button"
+                variant="outline"
+                size="sm"
+                onClick={finalizeVote}
+                disabled={finalizing}
+                className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 w-full"
+              >
+                {finalizing ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                Finalize Vote & Create Rewards Pool
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Chat */}
+        <ChatSection voteId={vote.id} principal={principal} actor={actor} />
       </div>
     </motion.div>
   );
 }
 
-function ChatSection({
-  proposalId,
+// ─── RewardsSection ──────────────────────────────────────────────────────────
+
+function RewardsSection({
+  pools,
+  isAdmin,
+  adminPassword,
   actor,
-  identity,
-  plugPrincipal,
+  onRefresh,
 }: {
-  proposalId: bigint;
+  pools: RewardsPoolEntry[];
+  isAdmin: boolean;
+  adminPassword: string;
   actor: any;
-  identity: any;
-  plugPrincipal?: string | null;
+  onRefresh: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [chatName, setChatName] = useState("");
-  const [chatMsg, setChatMsg] = useState("");
-  const [sending, setSending] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [marking, setMarking] = useState<bigint | null>(null);
 
-  const activePrincipal = identity
-    ? identity.getPrincipal().toString()
-    : (plugPrincipal ?? null);
+  if (pools.length === 0) return null;
 
-  const loadMessages = useCallback(async () => {
+  async function markDistributed(voteId: bigint) {
     if (!actor) return;
+    setMarking(voteId);
     try {
-      const msgs = await (actor as any).getChatMessages(proposalId);
-      const sorted = [...msgs].sort((a: ChatMsg, b: ChatMsg) =>
-        a.timestamp > b.timestamp ? 1 : -1,
-      );
-      setMessages(sorted);
-    } catch (e) {
-      console.error("chat load error", e);
-    }
-  }, [actor, proposalId]);
-
-  useEffect(() => {
-    setChatLoading(true);
-    loadMessages().finally(() => setChatLoading(false));
-  }, [loadMessages]);
-
-  useEffect(() => {
-    const interval = setInterval(loadMessages, 10000);
-    return () => clearInterval(interval);
-  }, [loadMessages]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to bottom when messages update
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
-    if (activePrincipal) {
-      setChatName(`${activePrincipal.slice(0, 10)}...`);
-    }
-  }, [activePrincipal]);
-
-  async function handleSend() {
-    if (!actor || !chatMsg.trim() || !chatName.trim()) return;
-    setSending(true);
-    try {
-      const result = await (actor as any).addChatMessage(
-        proposalId,
-        chatName,
-        chatMsg.trim(),
-      );
-      if (result) {
-        setChatMsg("");
-        await loadMessages();
+      const ok = await actor.markRewardsDistributed(adminPassword, voteId);
+      if (ok) {
+        toast.success("Rewards marked as distributed!");
+        onRefresh();
       } else {
-        toast.error("Failed to send message. Make sure you are signed in.");
+        toast.error("Failed to mark distributed.");
       }
-    } catch (_e) {
-      toast.error("Failed to send message.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
     } finally {
-      setSending(false);
+      setMarking(null);
     }
-  }
-
-  const CHAT_COLORS = [
-    "text-amber-400",
-    "text-sky-400",
-    "text-emerald-400",
-    "text-rose-400",
-    "text-violet-400",
-    "text-orange-400",
-  ];
-
-  function colorForAuthor(author: string) {
-    let hash = 0;
-    for (let i = 0; i < author.length; i++)
-      hash = author.charCodeAt(i) + ((hash << 5) - hash);
-    return CHAT_COLORS[Math.abs(hash) % CHAT_COLORS.length];
   }
 
   return (
-    <div className="mt-6 space-y-4">
-      <div className="flex items-center gap-2 text-gold font-heading font-bold">
-        <MessageSquare className="h-5 w-5" />
-        <span>Proposal Chat</span>
-        <span className="text-xs text-muted-foreground font-normal">
-          — discuss before you vote 💬
-        </span>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm p-6"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Trophy className="w-5 h-5 text-yellow-400" />
+        <h3 className="text-lg font-bold text-yellow-300">Rewards Pools</h3>
       </div>
-
-      <div className="glass-card border border-[oklch(0.87_0.17_90/0.2)] rounded-2xl overflow-hidden">
-        <div
-          className="h-64 overflow-y-auto p-4 space-y-3"
-          data-ocid="chat.panel"
-        >
-          {chatLoading && (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-gold" />
+      <div className="space-y-3">
+        {pools.map((p) => (
+          <div
+            key={String(p.voteId)}
+            data-ocid="rewards.item.1"
+            className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-yellow-600/20"
+          >
+            <div>
+              <p className="text-sm font-semibold text-yellow-300">
+                {"ICP" in p.voteType ? "$ICP" : "$BITTYICP"} Vote Rewards
+              </p>
+              <p className="text-xs text-gray-400">
+                Losing option:{" "}
+                <span className="text-yellow-400">{p.losingOptionLabel}</span> (
+                {Number(p.losingOptionPct)}%)
+              </p>
+              <p className="text-xs text-gray-400">
+                Pool amount: <span className="text-white">{p.poolAmount}</span>
+              </p>
             </div>
-          )}
-          {!chatLoading && messages.length === 0 && (
-            <div
-              className="text-center text-muted-foreground text-sm py-8"
-              data-ocid="chat.empty_state"
-            >
-              🌟 Be the first to start the conversation!
-            </div>
-          )}
-          <AnimatePresence initial={false}>
-            {messages.map((msg) => (
-              <motion.div
-                key={String(msg.id)}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex gap-2.5 items-start"
-              >
-                <div className="w-7 h-7 rounded-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.3)] flex items-center justify-center shrink-0 text-xs font-bold text-gold">
-                  {msg.author.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`text-xs font-bold ${colorForAuthor(msg.author)} truncate max-w-[120px]`}
-                    >
-                      {msg.author}
-                    </span>
-                    <span className="text-xs text-muted-foreground/50 shrink-0">
-                      {formatTimestamp(msg.timestamp)}
-                    </span>
-                  </div>
-                  <p className="text-sm text-foreground/90 leading-snug mt-0.5 break-words">
-                    {msg.message}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          <div ref={bottomRef} />
-        </div>
-
-        <div className="border-t border-[oklch(0.87_0.17_90/0.15)] p-3 space-y-2">
-          {!activePrincipal ? (
-            <p className="text-xs text-muted-foreground text-center py-1">
-              🔒 Sign in with a wallet to chat
-            </p>
-          ) : (
-            <>
-              <Input
-                value={chatName}
-                onChange={(e) => setChatName(e.target.value)}
-                placeholder="Display name"
-                className="text-xs h-8 bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground"
-                data-ocid="chat.input"
-              />
-              <div className="flex gap-2">
-                <Textarea
-                  value={chatMsg}
-                  onChange={(e) => setChatMsg(e.target.value)}
-                  placeholder="Share your thoughts... 🚀"
-                  className="text-sm bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground resize-none min-h-[60px]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  data-ocid="chat.textarea"
-                />
+            <div className="flex flex-col items-end gap-2">
+              {p.distributed ? (
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Distributed
+                </span>
+              ) : (
+                <span className="text-xs text-amber-400 flex items-center gap-1">
+                  <Gift className="w-3 h-3" />
+                  Pending
+                </span>
+              )}
+              {isAdmin && !p.distributed && (
                 <Button
-                  onClick={handleSend}
-                  disabled={sending || !chatMsg.trim() || !chatName.trim()}
-                  size="icon"
-                  className="bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)] shrink-0 self-end h-[60px] w-10"
-                  data-ocid="chat.submit_button"
+                  data-ocid="rewards.confirm_button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => markDistributed(p.voteId)}
+                  disabled={marking === p.voteId}
+                  className="border-green-500/50 text-green-400 hover:bg-green-500/10 text-xs"
                 >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  {marking === p.voteId ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <Send className="h-4 w-4" />
+                    "Mark Distributed"
                   )}
                 </Button>
-              </div>
-            </>
-          )}
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── RewardsPoolPanel ────────────────────────────────────────────────────────
+
+function RewardsPoolCard({
+  pool,
+  isAdmin,
+  adminPassword: _adminPassword,
+  currentUserPrincipal,
+  expandedPool,
+  setExpandedPool,
+  markDistributed,
+  markDistributedPending,
+}: {
+  pool: any;
+  isAdmin: boolean;
+  adminPassword?: string;
+  currentUserPrincipal: string | null;
+  expandedPool: string | null;
+  setExpandedPool: (id: string | null) => void;
+  markDistributed: (voteId: bigint) => Promise<void>;
+  markDistributedPending: boolean;
+}) {
+  const voteAllocations = useGetVoteAllocations(pool.voteId as bigint);
+  const allocs = voteAllocations.data ?? [];
+
+  const losingLabel = pool.losingOptionLabel as string;
+  const isICP = "ICP" in pool.voteType;
+  const optionLabels = isICP
+    ? [
+        "BUY $BITTYICP & STORE IN TREASURY",
+        "INVEST INTO NEURON",
+        "HOLD FOR LATER VOTE",
+      ]
+    : ["BURN $BITTYICP", "SEND TO GAMES/DEV WALLET", "HOLD FOR LATER VOTE"];
+
+  const voterWinningPower: Record<string, number> = {};
+  let totalWinningPower = 0;
+
+  for (const alloc of allocs) {
+    const pcts = [Number(alloc.pctA), Number(alloc.pctB), Number(alloc.pctC)];
+    const vp = Number(alloc.votingPower);
+    let winningPct = 0;
+    for (let i = 0; i < 3; i++) {
+      if (optionLabels[i] !== losingLabel) {
+        winningPct += pcts[i];
+      }
+    }
+    const winningPower = (winningPct / 100) * vp;
+    voterWinningPower[alloc.voterPrincipal as string] = winningPower;
+    totalWinningPower += winningPower;
+  }
+
+  const isExpanded = expandedPool === pool.voteId.toString();
+  const voteTypeLabel = isICP ? "$ICP" : "$BITTYICP";
+  const losingPct = Number(pool.losingOptionPct);
+
+  const myPrincipal = currentUserPrincipal;
+  const myWinningPower = myPrincipal
+    ? (voterWinningPower[myPrincipal] ?? 0)
+    : 0;
+  const myShare =
+    totalWinningPower > 0 ? myWinningPower / totalWinningPower : 0;
+  const poolAmountNum = Number.parseFloat(pool.poolAmount as string) || 0;
+  const myRewardEstimate = myShare * poolAmountNum * (losingPct / 100);
+
+  return (
+    <div className="rounded-xl border border-yellow-600/40 bg-black/40 backdrop-blur-sm p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="shrink-0 rounded-lg bg-yellow-500/10 border border-yellow-500/25 p-2">
+            <Gift className="h-5 w-5 text-yellow-400" />
+          </div>
+          <div>
+            <div className="font-bold text-sm text-yellow-300">
+              {voteTypeLabel} Rewards Pool
+            </div>
+            <div className="text-xs text-gray-400">
+              Vote #{pool.voteId.toString()}
+            </div>
+          </div>
+        </div>
+        {pool.distributed ? (
+          <Badge
+            variant="outline"
+            className="text-xs border-green-500/40 text-green-400"
+          >
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Distributed
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="text-xs border-yellow-500/40 text-yellow-400"
+          >
+            Pending
+          </Badge>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="bg-black/30 rounded-lg p-3">
+          <div className="text-xs text-gray-400 mb-1">Losing Option</div>
+          <div className="font-semibold text-white text-xs">{losingLabel}</div>
+          <div className="text-yellow-400 font-mono text-sm mt-1">
+            {losingPct}% of votes
+          </div>
+        </div>
+        <div className="bg-black/30 rounded-lg p-3">
+          <div className="text-xs text-gray-400 mb-1">Pool Amount</div>
+          <div className="font-semibold text-yellow-400 font-mono text-sm">
+            {losingPct}% of {pool.poolAmount || "TBD"} {voteTypeLabel}
+          </div>
         </div>
       </div>
+
+      {myPrincipal && myShare > 0 && (
+        <div className="bg-yellow-500/8 border border-yellow-500/20 rounded-lg p-3">
+          <div className="text-xs text-gray-400 mb-1">
+            Your Estimated Reward Share
+          </div>
+          <div className="font-bold text-yellow-300 text-lg">
+            {(myShare * 100).toFixed(2)}% of pool
+          </div>
+          {poolAmountNum > 0 && (
+            <div className="text-xs text-gray-400 mt-1">
+              ≈{" "}
+              {myRewardEstimate.toLocaleString(undefined, {
+                maximumFractionDigits: 4,
+              })}{" "}
+              {voteTypeLabel}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <button
+          type="button"
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 transition-colors"
+          onClick={() =>
+            setExpandedPool(isExpanded ? null : pool.voteId.toString())
+          }
+        >
+          {isExpanded ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+          {isExpanded ? "Hide" : "Show"} voter breakdown ({allocs.length}{" "}
+          voters)
+        </button>
+      )}
+
+      {isAdmin && isExpanded && allocs.length > 0 && (
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {allocs.map((alloc: any) => {
+            const wp = voterWinningPower[alloc.voterPrincipal as string] ?? 0;
+            const share = totalWinningPower > 0 ? wp / totalWinningPower : 0;
+            return (
+              <div
+                key={alloc.voterPrincipal as string}
+                className="flex items-center justify-between gap-2 bg-black/30 rounded-lg px-3 py-2 text-xs"
+              >
+                <span className="font-mono text-gray-400 truncate max-w-[120px]">
+                  {(alloc.voterPrincipal as string).slice(0, 12)}…
+                </span>
+                <span className="text-yellow-400 font-semibold shrink-0">
+                  {(share * 100).toFixed(1)}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {isAdmin && !pool.distributed && (
+        <Button
+          onClick={() => markDistributed(pool.voteId as bigint)}
+          disabled={markDistributedPending}
+          variant="outline"
+          className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 w-full"
+          data-ocid="rewards.distribute_button"
+        >
+          {markDistributedPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Gift className="h-4 w-4 mr-2" />
+          )}
+          Mark as Distributed
+        </Button>
+      )}
     </div>
   );
 }
 
-function ProposalDetail({
-  proposal,
-  onBack,
+function RewardsPoolPanel({
   isAdmin,
   adminPassword,
+  currentUserPrincipal,
 }: {
-  proposal: ProposalData;
-  onBack: () => void;
   isAdmin: boolean;
   adminPassword: string;
+  currentUserPrincipal: string | null;
 }) {
   const { actor } = useActor();
-  const { identity, login, isLoggingIn, clear } = useInternetIdentity();
+  const rewardsPools = useGetRewardsPools();
+  const markDistributed = useMarkRewardsDistributed();
+  const [expandedPool, setExpandedPool] = useState<string | null>(null);
 
-  const [plugPrincipal, setPlugPrincipal] = useState<string | null>(null);
-  const [plugConnecting, setPlugConnecting] = useState(false);
+  const undistributed = (rewardsPools.data ?? []).filter(
+    (p: any) => !p.distributed,
+  );
+  const distributed = (rewardsPools.data ?? []).filter(
+    (p: any) => p.distributed,
+  );
 
-  const [votes, setVotes] = useState<VoteData[]>([]);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [bittyBalance, setBittyBalance] = useState<bigint | null>(null);
-  const [checkingBalance, setCheckingBalance] = useState(false);
-  const [votingPower, setVotingPower] = useState<number>(0);
-  const [hasVotedState, setHasVotedState] = useState(false);
-  const [casting, setCasting] = useState(false);
-  const [closing, setClosing] = useState(false);
+  if (rewardsPools.isLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-yellow-400" />
+      </div>
+    );
+  }
 
-  const activePrincipal: string | null =
-    identity?.getPrincipal().toString() ?? plugPrincipal ?? null;
+  if ((rewardsPools.data ?? []).length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500 text-sm">
+        No rewards pools yet. They will appear here after votes are finalized.
+      </div>
+    );
+  }
 
-  const isExpired = BigInt(Date.now()) * BigInt(1_000_000) > proposal.endTime;
-  const isOpen = proposal.isOpen && !isExpired;
-
-  // Load votes on mount
-  useEffect(() => {
-    async function loadVotes() {
-      if (!actor) return;
-      try {
-        const v = await (actor as any).getVotesForProposal(proposal.id);
-        setVotes(v);
-      } catch (_e) {
-        console.error("load votes error");
-      }
-    }
-    loadVotes();
-  }, [actor, proposal.id]);
-
-  // Check if already voted when activePrincipal is known
-  useEffect(() => {
-    async function checkVoted() {
-      if (!actor || !activePrincipal) return;
-      try {
-        const voted = await (actor as any).hasVoted(
-          proposal.id,
-          activePrincipal,
-        );
-        setHasVotedState(voted);
-      } catch (_e) {
-        console.error("hasVoted error");
-      }
-    }
-    if (activePrincipal) checkVoted();
-  }, [actor, proposal.id, activePrincipal]);
-
-  // Auto-check balance when principal is available
-  useEffect(() => {
-    if (activePrincipal) {
-      handleCheckBalance(activePrincipal);
-    } else {
-      setBittyBalance(null);
-      setVotingPower(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePrincipal]);
-
-  async function handleCheckBalance(principal: string) {
-    setCheckingBalance(true);
+  async function handleMarkDistributed(voteId: bigint) {
     try {
-      const bal = await getBITTYBalance(principal);
-      setBittyBalance(bal);
-      if (bal !== null) {
-        const tokenAmount = Number(bal) / 1e8;
-        const power = Math.floor(tokenAmount / 1000);
-        setVotingPower(power);
-        if (power < 1) {
-          toast.error("You need at least 1,000 $BITTYICP to vote");
-        } else {
-          toast.success(`Voting power: ${power} vote${power !== 1 ? "s" : ""}`);
-        }
+      const a = actor as any;
+      const res = await markDistributed.mutateAsync({
+        password: adminPassword,
+        voteId,
+        actor: a,
+      });
+      if (res) {
+        toast.success("Marked as distributed!");
+      } else {
+        toast.error("Failed — check password");
       }
-    } catch (_e) {
-      toast.error("Failed to check balance");
-    } finally {
-      setCheckingBalance(false);
+    } catch {
+      toast.error("Failed to mark as distributed");
     }
   }
 
+  return (
+    <div className="space-y-4">
+      {undistributed.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-sm tracking-widest uppercase text-yellow-400">
+            Pending Distribution
+          </h3>
+          {undistributed.map((pool: any) => (
+            <RewardsPoolCard
+              key={pool.voteId.toString()}
+              pool={pool}
+              isAdmin={isAdmin}
+              adminPassword={adminPassword}
+              currentUserPrincipal={currentUserPrincipal}
+              expandedPool={expandedPool}
+              setExpandedPool={setExpandedPool}
+              markDistributed={handleMarkDistributed}
+              markDistributedPending={markDistributed.isPending}
+            />
+          ))}
+        </div>
+      )}
+      {distributed.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-sm tracking-widest uppercase text-gray-500">
+            Past Distributions
+          </h3>
+          {distributed.map((pool: any) => (
+            <RewardsPoolCard
+              key={pool.voteId.toString()}
+              pool={pool}
+              isAdmin={isAdmin}
+              adminPassword={adminPassword}
+              currentUserPrincipal={currentUserPrincipal}
+              expandedPool={expandedPool}
+              setExpandedPool={setExpandedPool}
+              markDistributed={handleMarkDistributed}
+              markDistributedPending={markDistributed.isPending}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PublicRewardsBanner ─────────────────────────────────────────────────────
+
+function PublicRewardsBanner({ pools }: { pools: RewardsPoolEntry[] }) {
+  if (pools.length === 0) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm p-5"
+      data-ocid="rewards.panel"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Gift className="w-4 h-4 text-yellow-400" />
+        <h3 className="font-bold text-sm uppercase tracking-widest text-yellow-300">
+          Distribution Rewards
+        </h3>
+      </div>
+      <div className="space-y-2">
+        {pools.map((p) => {
+          const isICP = "ICP" in p.voteType;
+          const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
+          return (
+            <div
+              key={p.voteId.toString()}
+              className="flex items-center justify-between gap-3 bg-white/5 rounded-xl px-4 py-3 border border-yellow-600/15"
+            >
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  {tokenLabel} Treasury Vote
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Total distribution rewards:{" "}
+                  <span className="text-yellow-300 font-semibold">
+                    {Number(p.losingOptionPct)}% of{" "}
+                    {p.poolAmount || "vote pool"} {tokenLabel}
+                  </span>
+                </p>
+              </div>
+              {p.distributed ? (
+                <span className="text-xs text-green-400 flex items-center gap-1 shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Distributed
+                </span>
+              ) : (
+                <span className="text-xs text-amber-400 flex items-center gap-1 shrink-0">
+                  <Gift className="w-3.5 h-3.5" />
+                  Pending
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── MyRewardsPanel ──────────────────────────────────────────────────────────
+
+function MyRewardsPanel({
+  votes,
+  pools,
+  principal,
+  actor,
+}: {
+  votes: MonthlyVote[];
+  pools: RewardsPoolEntry[];
+  principal: string;
+  actor: any;
+}) {
+  const [myAllocations, setMyAllocations] = useState<
+    Record<string, { pctA: number; pctB: number; pctC: number; vp: number }>
+  >({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!actor || !principal || votes.length === 0) {
+      setLoading(false);
+      return;
+    }
+    async function fetchAllocations() {
+      try {
+        const results = await Promise.all(
+          votes.map(async (v) => {
+            const allocs = await actor.getVoteAllocations(v.id);
+            const mine = allocs.find(
+              (a: any) => a.voterPrincipal === principal,
+            );
+            return { voteId: v.id.toString(), alloc: mine ?? null };
+          }),
+        );
+        const map: typeof myAllocations = {};
+        for (const r of results) {
+          if (r.alloc) {
+            map[r.voteId] = {
+              pctA: Number(r.alloc.pctA),
+              pctB: Number(r.alloc.pctB),
+              pctC: Number(r.alloc.pctC),
+              vp: Number(r.alloc.votingPower),
+            };
+          }
+        }
+        setMyAllocations(map);
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAllocations();
+  }, [actor, principal, votes]);
+
+  const participated = votes.filter((v) => myAllocations[v.id.toString()]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm p-6 space-y-4"
+      data-ocid="my_rewards.panel"
+    >
+      <div className="flex items-center gap-2">
+        <Trophy className="w-5 h-5 text-yellow-400" />
+        <h3 className="font-bold text-base text-yellow-300">
+          My Rewards History
+        </h3>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-yellow-400" />
+        </div>
+      ) : participated.length === 0 ? (
+        <p
+          className="text-center text-gray-500 text-sm py-6"
+          data-ocid="my_rewards.empty_state"
+        >
+          You haven&apos;t voted in any cycles yet.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {participated.map((vote) => {
+            const voteIdStr = vote.id.toString();
+            const alloc = myAllocations[voteIdStr];
+            const isICP = "ICP" in vote.voteType;
+            const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
+            const optionLabels = isICP
+              ? [
+                  "BUY $BITTYICP & STORE IN TREASURY",
+                  "INVEST INTO NEURON",
+                  "HOLD FOR LATER VOTE",
+                ]
+              : [
+                  "BURN $BITTYICP",
+                  "SEND TO GAMES/DEV WALLET",
+                  "HOLD FOR LATER VOTE",
+                ];
+            const pcts = [alloc.pctA, alloc.pctB, alloc.pctC];
+
+            const pool = pools.find((p) => p.voteId.toString() === voteIdStr);
+
+            // Calculate winning power
+            let winningPct = 0;
+            if (pool) {
+              for (let i = 0; i < 3; i++) {
+                if (optionLabels[i] !== (pool.losingOptionLabel as string)) {
+                  winningPct += pcts[i];
+                }
+              }
+            }
+            const losingPct = pool ? 100 - winningPct : 0;
+
+            // Estimate reward (if pool data available)
+            const poolAmountNum = pool
+              ? Number.parseFloat(pool.poolAmount as string) || 0
+              : 0;
+
+            // Month display
+            const monthNames = [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May",
+              "Jun",
+              "Jul",
+              "Aug",
+              "Sep",
+              "Oct",
+              "Nov",
+              "Dec",
+            ];
+            const monthNum = Number(vote.month);
+            const yearNum = Number(vote.year);
+            const monthLabel = `${monthNames[monthNum - 1] ?? monthNum} ${yearNum}`;
+
+            return (
+              <div
+                key={voteIdStr}
+                className="bg-white/5 rounded-xl border border-yellow-600/20 p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-sm text-yellow-300">
+                      {tokenLabel} Treasury Vote
+                    </p>
+                    <p className="text-xs text-gray-400">{monthLabel}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-xs border-yellow-500/40 text-yellow-400 shrink-0"
+                  >
+                    {alloc.vp} votes
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 text-xs">
+                  {optionLabels.map((label, i) => (
+                    <div
+                      key={label}
+                      className="bg-black/30 rounded-lg p-2 border border-white/10 text-center"
+                    >
+                      <p
+                        className="text-gray-400 text-[10px] leading-tight mb-1 truncate"
+                        title={label}
+                      >
+                        {label.split(" ").slice(0, 2).join(" ")}…
+                      </p>
+                      <p
+                        className={`font-bold ${pcts[i] > 0 ? "text-yellow-300" : "text-gray-600"}`}
+                      >
+                        {pcts[i]}%
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {pool && (
+                  <div className="bg-yellow-500/8 border border-yellow-500/20 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">
+                        Power on winning options:
+                      </span>
+                      <span className="text-yellow-300 font-semibold">
+                        {winningPct}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">
+                        Power on losing option:
+                      </span>
+                      <span className="text-red-400 font-semibold">
+                        {losingPct}%
+                      </span>
+                    </div>
+                    {poolAmountNum > 0 && winningPct > 0 && (
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-yellow-500/15">
+                        <span className="text-gray-400">Estimated reward:</span>
+                        <span className="text-green-400 font-semibold">
+                          Based on {winningPct}% power
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">Status:</span>
+                      {pool.distributed ? (
+                        <span className="text-green-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Distributed
+                        </span>
+                      ) : (
+                        <span className="text-amber-400 flex items-center gap-1">
+                          <Gift className="w-3 h-3" /> Pending
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Main VotingPage ─────────────────────────────────────────────────────────
+
+export default function VotingPage({
+  onBack,
+  isAdmin,
+  adminPassword,
+}: VotingPageProps) {
+  const { actor } = useActor();
+  const { identity, login, isLoggingIn, clear } = useInternetIdentity();
+
+  // Auth state
+  const [plugPrincipal, setPlugPrincipal] = useState<string | null>(null);
+  const [plugConnecting, setPlugConnecting] = useState(false);
+
+  // Balance
+  const [bittyBalance, setBittyBalance] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  // Vote data
+  const [votes, setVotes] = useState<MonthlyVote[]>([]);
+  const [pools, setPools] = useState<RewardsPoolEntry[]>([]);
+  const [loadingVotes, setLoadingVotes] = useState(false);
+
+  // Canister deposit address
+  const [canisterId, setCanisterId] = useState<string>("");
+  useEffect(() => {
+    loadConfig()
+      .then((cfg) => setCanisterId(cfg.backend_canister_id))
+      .catch(() => {});
+  }, []);
+
+  // Derived
+  const iiPrincipal = identity?.getPrincipal().toString() ?? null;
+  const principal = iiPrincipal ?? plugPrincipal;
+  const votingPower = Math.floor(bittyBalance / 1000);
+  const isSignedIn = !!principal;
+
+  // Load votes on actor ready
+  const loadVotes = useCallback(async () => {
+    const a = actor as any;
+    if (!a) return;
+    setLoadingVotes(true);
+    try {
+      const [allVotes, allPools] = await Promise.all([
+        a.getAllVotes(),
+        a.getRewardsPools(),
+      ]);
+      setVotes(allVotes);
+      setPools(allPools);
+    } catch {
+    } finally {
+      setLoadingVotes(false);
+    }
+  }, [actor]);
+
+  useEffect(() => {
+    if (actor) loadVotes();
+  }, [actor, loadVotes]);
+
+  // Load balance when principal changes
+  useEffect(() => {
+    if (!principal) {
+      setBittyBalance(0);
+      return;
+    }
+    setBalanceLoading(true);
+    getBITTYBalance(principal)
+      .then((raw) => setBittyBalance(Number(raw) / 1e8))
+      .catch(() => setBittyBalance(0))
+      .finally(() => setBalanceLoading(false));
+  }, [principal]);
+
+  // Plug wallet connect
   async function connectPlug() {
     if (!window.ic?.plug) {
       toast.error(
@@ -548,754 +1623,405 @@ function ProposalDetail({
     try {
       const connected = await window.ic.plug.requestConnect();
       if (connected) {
-        const principal = await window.ic.plug.agent?.getPrincipal();
-        setPlugPrincipal(principal?.toString() ?? null);
+        const p = await window.ic.plug.agent?.getPrincipal();
+        setPlugPrincipal(p?.toString() ?? null);
       } else {
         toast.error("Plug wallet connection was rejected.");
       }
-    } catch (_e) {
+    } catch {
       toast.error("Failed to connect Plug wallet.");
     } finally {
       setPlugConnecting(false);
     }
   }
 
-  async function handleDisconnect() {
-    if (identity) {
-      clear();
-    }
-    if (plugPrincipal) {
-      try {
-        await window.ic?.plug?.disconnect();
-      } catch (_e) {
-        // ignore
-      }
-      setPlugPrincipal(null);
-    }
-    setBittyBalance(null);
-    setVotingPower(0);
-    setHasVotedState(false);
-    setSelectedOption(null);
-  }
-
-  async function handleCastVote() {
-    if (!actor || selectedOption === null || !activePrincipal) return;
-    setCasting(true);
+  async function disconnectPlug() {
     try {
-      const result = await (actor as any).castVote(
-        proposal.id,
-        activePrincipal,
-        BigInt(selectedOption),
-        BigInt(votingPower),
-      );
-      if (result) {
-        toast.success("Vote cast successfully! 🎉");
-        setHasVotedState(true);
-        const v = await (actor as any).getVotesForProposal(proposal.id);
-        setVotes(v);
-      } else {
-        toast.error("Failed to cast vote. You may have already voted.");
-      }
-    } catch (_e) {
-      toast.error("Vote failed. Please try again.");
-    } finally {
-      setCasting(false);
-    }
+      await window.ic?.plug?.disconnect();
+    } catch {}
+    setPlugPrincipal(null);
   }
 
-  async function handleClose() {
-    if (!actor) return;
-    setClosing(true);
-    try {
-      const result = await (actor as any).closeProposal(
-        adminPassword,
-        proposal.id,
-      );
-      if (result) {
-        toast.success("Proposal closed");
-        onBack();
-      } else {
-        toast.error("Failed to close proposal");
-      }
-    } catch (_e) {
-      toast.error("Failed to close proposal");
-    } finally {
-      setClosing(false);
-    }
+  function signOut() {
+    if (iiPrincipal) clear();
+    if (plugPrincipal) disconnectPlug();
   }
 
-  const voteTotals = proposal.options.map((_, i) =>
-    votes
-      .filter((v) => Number(v.optionIndex) === i)
-      .reduce((sum, v) => sum + Number(v.weight), 0),
-  );
-  const totalVotes = voteTotals.reduce((a, b) => a + b, 0);
-  const tokenAmount = bittyBalance !== null ? Number(bittyBalance) / 1e8 : null;
+  // Separate ICP and BITTYICP votes
+  const bittyVotes = votes.filter((v) => "BITTYICP" in v.voteType);
+  const icpVotes = votes.filter((v) => "ICP" in v.voteType);
+
+  // Show most recent of each type
+  const latestBitty = bittyVotes[bittyVotes.length - 1];
+  const latestICP = icpVotes[icpVotes.length - 1];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -24 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6"
-    >
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-gold transition-colors"
-          data-ocid="proposal_detail.back_button"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to proposals
-        </button>
-      </div>
-
-      <div className="glass-card-gold border border-[oklch(0.87_0.17_90/0.35)] rounded-2xl p-6 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Badge
-                className={
-                  isOpen
-                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                    : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"
-                }
-              >
-                {isOpen ? "OPEN" : "CLOSED"}
-              </Badge>
-            </div>
-            <h2 className="font-heading font-bold text-2xl text-foreground">
-              {proposal.title}
-            </h2>
-            <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-              {proposal.description}
-            </p>
-          </div>
-          {isAdmin && isOpen && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClose}
-              disabled={closing}
-              className="border-red-500/40 text-red-400 hover:bg-red-500/10 shrink-0"
-              data-ocid="proposal_detail.close_button"
-            >
-              {closing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <X className="h-3 w-3" />
-              )}
-              Close
-            </Button>
-          )}
-        </div>
-        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5" />
-          {timeRemaining(proposal.endTime)}
-        </p>
-      </div>
-
-      {/* Results */}
-      <Card className="bg-black/30 border-[oklch(0.87_0.17_90/0.25)] rounded-2xl">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-gold font-heading text-sm flex items-center gap-2">
-            <Users className="h-4 w-4" /> Live Results
-            <span className="text-xs text-muted-foreground font-normal ml-1">
-              {totalVotes} total weighted vote{totalVotes !== 1 ? "s" : ""}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {proposal.options.map((opt, i) => {
-            const pct =
-              totalVotes > 0
-                ? Math.round((voteTotals[i] / totalVotes) * 100)
-                : 0;
-            return (
-              <div key={opt} className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground font-medium">{opt}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {voteTotals[i]} votes ({pct}%)
-                  </span>
-                </div>
-                <Progress value={pct} className="h-2 bg-black/40" />
-              </div>
-            );
-          })}
-          {votes.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-2">
-              No votes yet — be the first!
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Voting section */}
-      {isOpen && (
-        <Card className="bg-black/30 border-[oklch(0.87_0.17_90/0.25)] rounded-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-gold font-heading text-sm flex items-center gap-2">
-              <VoteIcon className="h-4 w-4" /> Cast Your Vote
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!activePrincipal ? (
-              /* Not signed in — show two wallet options */
-              <div className="space-y-4 py-2">
-                <p className="text-sm text-muted-foreground text-center">
-                  Connect the wallet that holds your $BITTYICP to vote
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Internet Identity */}
-                  <div className="flex flex-col items-center gap-2">
-                    <Button
-                      onClick={login}
-                      disabled={isLoggingIn}
-                      className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)]"
-                      data-ocid="voting.login_button"
-                    >
-                      {isLoggingIn ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="h-4 w-4 mr-2" />
-                      )}
-                      Internet Identity
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground/70 text-center leading-snug px-1">
-                      Supports NNS, Oisy, NFID, and any Internet Identity-based
-                      wallet
-                    </p>
-                  </div>
-
-                  {/* Plug Wallet */}
-                  <div className="flex flex-col items-center gap-2">
-                    <Button
-                      onClick={connectPlug}
-                      disabled={plugConnecting}
-                      className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.4)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)]"
-                      data-ocid="voting.plug_button"
-                    >
-                      {plugConnecting ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Wallet className="h-4 w-4 mr-2" />
-                      )}
-                      Connect Plug Wallet
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground/70 text-center leading-snug px-1">
-                      Supports Plug browser extension wallet
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : hasVotedState ? (
-              <div
-                className="flex items-center gap-2 text-emerald-400 text-sm py-4 justify-center"
-                data-ocid="voting.success_state"
-              >
-                <CheckCircle2 className="h-5 w-5" />
-                You have already voted on this proposal
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Signed-in identity info */}
-                <div className="flex items-center justify-between bg-[oklch(0.87_0.17_90/0.08)] border border-[oklch(0.87_0.17_90/0.2)] rounded-xl px-4 py-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {checkingBalance ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-gold shrink-0" />
-                    ) : (
-                      <ShieldCheck className="h-3.5 w-3.5 text-gold shrink-0" />
-                    )}
-                    <span className="text-xs text-muted-foreground truncate">
-                      {checkingBalance
-                        ? `Checking balance for: ${activePrincipal.slice(0, 20)}...`
-                        : `Connected: ${activePrincipal.slice(0, 20)}...`}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleDisconnect}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-400 transition-colors shrink-0 ml-2"
-                    data-ocid="voting.toggle"
-                  >
-                    <LogOut className="h-3 w-3" />
-                    Disconnect
-                  </button>
-                </div>
-
-                {/* Balance result */}
-                {!checkingBalance && bittyBalance !== null && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-xl p-3 text-sm ${
-                      votingPower >= 1
-                        ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
-                        : "bg-red-500/10 border border-red-500/30 text-red-400"
-                    }`}
-                    data-ocid="voting.success_state"
-                  >
-                    <div className="font-medium">
-                      {tokenAmount?.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })}{" "}
-                      $BITTYICP
-                    </div>
-                    {votingPower >= 1 ? (
-                      <div className="text-xs mt-0.5">
-                        ⚡ Voting power: <strong>{votingPower}</strong> vote
-                        {votingPower !== 1 ? "s" : ""}
-                      </div>
-                    ) : (
-                      <div className="text-xs mt-0.5">
-                        You need at least 1,000 $BITTYICP to vote
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-
-                {!checkingBalance && votingPower >= 1 && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground font-medium">
-                      Select an option
-                    </p>
-                    <div className="space-y-2">
-                      {proposal.options.map((opt, i) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setSelectedOption(i)}
-                          className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                            selectedOption === i
-                              ? "bg-[oklch(0.87_0.17_90/0.15)] border-[oklch(0.87_0.17_90/0.6)] text-gold font-medium"
-                              : "bg-black/20 border-[oklch(0.87_0.17_90/0.2)] text-foreground hover:border-[oklch(0.87_0.17_90/0.4)]"
-                          }`}
-                          data-ocid="voting.radio"
-                        >
-                          <span className="mr-2">
-                            {selectedOption === i ? "●" : "○"}
-                          </span>
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                    <Button
-                      onClick={handleCastVote}
-                      disabled={casting || selectedOption === null}
-                      className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.5)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)] font-heading font-bold tracking-wide"
-                      data-ocid="voting.submit_button"
-                    >
-                      {casting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Casting Vote...
-                        </>
-                      ) : (
-                        `Cast Vote (${votingPower} vote${votingPower !== 1 ? "s" : ""})`
-                      )}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <ChatSection
-        proposalId={proposal.id}
-        actor={actor}
-        identity={identity}
-        plugPrincipal={plugPrincipal}
-      />
-    </motion.div>
-  );
-}
-
-function CreateProposalForm({
-  onCreated,
-  adminPassword,
-}: {
-  onCreated: () => void;
-  adminPassword: string;
-}) {
-  const { actor } = useActor();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [options, setOptions] = useState(["Yes", "No"]);
-  const [creating, setCreating] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  function addOption() {
-    if (options.length < 5) setOptions([...options, ""]);
-  }
-
-  function removeOption(i: number) {
-    if (options.length > 2) setOptions(options.filter((_, idx) => idx !== i));
-  }
-
-  async function handleCreate() {
-    if (!actor) {
-      toast.error("Backend not ready");
-      return;
-    }
-    if (!title.trim() || !description.trim()) {
-      toast.error("Fill in title and description");
-      return;
-    }
-    const validOptions = options.filter((o) => o.trim());
-    if (validOptions.length < 2) {
-      toast.error("At least 2 options required");
-      return;
-    }
-    setCreating(true);
-    try {
-      const result = await (actor as any).createProposal(
-        adminPassword,
-        title.trim(),
-        description.trim(),
-        validOptions,
-      );
-      if (result) {
-        toast.success("Proposal created! 🎉");
-        setTitle("");
-        setDescription("");
-        setOptions(["Yes", "No"]);
-        setOpen(false);
-        onCreated();
-      } else {
-        toast.error("Failed to create proposal");
-      }
-    } catch (_e) {
-      toast.error("Failed to create proposal");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <div className="glass-card border border-[oklch(0.87_0.17_90/0.35)] rounded-2xl overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-[oklch(0.87_0.17_90/0.05)] transition-colors"
-        data-ocid="create_proposal.open_modal_button"
-      >
-        <div className="flex items-center gap-2 text-gold font-heading font-bold">
-          <Plus className="h-5 w-5" />
-          Create New Proposal
-        </div>
-        {open ? (
-          <ChevronUp className="h-5 w-5 text-gold" />
-        ) : (
-          <ChevronDown className="h-5 w-5 text-gold" />
-        )}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="overflow-hidden"
-          >
-            <div className="px-6 pb-6 space-y-4 border-t border-[oklch(0.87_0.17_90/0.15)]">
-              <div className="space-y-2 pt-4">
-                <p className="text-xs text-muted-foreground font-medium">
-                  Proposal Title
-                </p>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Monthly vs Weekly Dividends"
-                  className="bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground"
-                  data-ocid="create_proposal.input"
-                />
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">
-                  Description
-                </p>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe what the community is voting on..."
-                  className="bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground min-h-[80px] resize-none"
-                  data-ocid="create_proposal.textarea"
-                />
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">
-                  Voting Options
-                </p>
-                {options.map((opt, i) => (
-                  <div key={`option-${i + 1}`} className="flex gap-2">
-                    <Input
-                      value={opt}
-                      onChange={(e) => {
-                        const next = [...options];
-                        next[i] = e.target.value;
-                        setOptions(next);
-                      }}
-                      placeholder={`Option ${i + 1}`}
-                      className="bg-black/30 border-[oklch(0.87_0.17_90/0.2)] text-foreground"
-                    />
-                    {options.length > 2 && (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeOption(i)}
-                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 shrink-0"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                {options.length < 5 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={addOption}
-                    className="text-muted-foreground hover:text-gold text-xs"
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Add option
-                  </Button>
-                )}
-              </div>
-              <Button
-                onClick={handleCreate}
-                disabled={creating}
-                className="w-full bg-[oklch(0.87_0.17_90/0.15)] border border-[oklch(0.87_0.17_90/0.5)] text-gold hover:bg-[oklch(0.87_0.17_90/0.25)] font-heading font-bold"
-                data-ocid="create_proposal.submit_button"
-              >
-                {creating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Proposal (7-day voting window)"
-                )}
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-export default function VotingPage({
-  onBack,
-  isAdmin,
-  adminPassword,
-}: VotingPageProps) {
-  const { actor } = useActor();
-  const [proposals, setProposals] = useState<ProposalData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedProposal, setSelectedProposal] = useState<ProposalData | null>(
-    null,
-  );
-
-  const loadProposals = useCallback(async () => {
-    if (!actor) return;
-    try {
-      const p = await (actor as any).getProposals();
-      const sorted = [...p].sort((a: ProposalData, b: ProposalData) =>
-        b.startTime > a.startTime ? 1 : -1,
-      );
-      setProposals(sorted);
-    } catch (_e) {
-      console.error("load proposals error");
-    }
-  }, [actor]);
-
-  useEffect(() => {
-    if (!actor) return;
-    setLoading(true);
-    loadProposals().finally(() => setLoading(false));
-  }, [actor, loadProposals]);
-
-  const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
-  const openProposals = proposals.filter((p) => p.isOpen && nowNs <= p.endTime);
-  const closedProposals = proposals.filter(
-    (p) => !p.isOpen || nowNs > p.endTime,
-  );
-
-  return (
-    <div className="min-h-screen relative overflow-x-hidden font-body">
+    <div className="min-h-screen bg-black text-white relative">
+      {/* Background */}
       <div
-        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
+        className="fixed inset-0 z-0"
+        style={{
+          backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
       />
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.40)] via-[oklch(0.10_0.025_252/0.35)] to-[oklch(0.05_0.01_252/0.55)]" />
-      <Toaster position="top-right" richColors />
+      <div className="fixed inset-0 z-0 bg-black/55" />
 
-      <div className="relative z-10 min-h-screen flex flex-col">
-        <header className="sticky top-0 z-20 glass-card border-b border-border/30">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div className="relative z-10 max-w-2xl mx-auto px-4 py-6 space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between"
+        >
+          <button
+            type="button"
+            data-ocid="nav.link"
+            onClick={onBack}
+            className="flex items-center gap-2 text-yellow-400 hover:text-yellow-300 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">Back to Treasury</span>
+          </button>
+          {isSignedIn && (
             <button
               type="button"
-              onClick={onBack}
-              className="flex items-center gap-2 text-muted-foreground hover:text-gold transition-colors"
-              data-ocid="voting_page.back_button"
+              data-ocid="auth.toggle"
+              onClick={signOut}
+              className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-400 transition-colors"
             >
-              <ArrowLeft className="h-5 w-5" />
-              <span className="text-sm">Back to Bank</span>
+              <LogOut className="w-4 h-4" />
+              Sign Out
             </button>
-            <div className="text-center">
-              <h1 className="font-heading font-bold text-xl sm:text-2xl text-foreground tracking-tight flex items-center gap-2">
-                <VoteIcon className="h-6 w-6 text-gold" />
-                COMMUNITY VOTING
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Governance by $BITTYICP holders
-              </p>
-            </div>
-            <div className="w-24" />
+          )}
+        </motion.div>
+
+        {/* Title */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-center"
+        >
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <VoteIcon className="w-8 h-8 text-yellow-400" />
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
+              Community Votes
+            </h1>
           </div>
-        </header>
+          <p className="text-gray-400 text-sm">
+            Two monthly votes on how to allocate treasury funds
+          </p>
+        </motion.div>
 
-        <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-6">
-          <AnimatePresence mode="wait">
-            {selectedProposal ? (
-              <ProposalDetail
-                key={String(selectedProposal.id)}
-                proposal={selectedProposal}
-                onBack={() => {
-                  setSelectedProposal(null);
-                  loadProposals();
-                }}
-                isAdmin={isAdmin}
-                adminPassword={adminPassword}
-              />
-            ) : (
-              <motion.div
-                key="proposals-list"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-6"
+        {/* Sign-in gate */}
+        <AnimatePresence mode="wait">
+          {!isSignedIn ? (
+            <motion.div
+              key="signin"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-ocid="auth.modal"
+              className="rounded-2xl border border-yellow-600/40 bg-black/60 backdrop-blur-sm p-6"
+            >
+              <div className="text-center mb-6">
+                <Wallet className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
+                <h2 className="text-xl font-bold text-yellow-300">
+                  Sign In to Vote
+                </h2>
+                <p className="text-gray-400 text-sm mt-1">
+                  Connect the wallet that holds your $BITTYICP tokens
+                </p>
+              </div>
+              <div className="grid gap-4">
+                {/* Internet Identity */}
+                <div>
+                  <Button
+                    data-ocid="auth.primary_button"
+                    onClick={() => login()}
+                    disabled={isLoggingIn}
+                    className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold py-3"
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Connecting…
+                      </>
+                    ) : (
+                      <>
+                        <LogIn className="w-4 h-4 mr-2" />
+                        Sign in with Internet Identity
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    Supports NNS, Oisy, NFID, and any Internet Identity-based
+                    wallet
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-yellow-600/20" />
+                  <span className="text-xs text-gray-500">or</span>
+                  <div className="flex-1 h-px bg-yellow-600/20" />
+                </div>
+
+                {/* Plug Wallet */}
+                <div>
+                  <Button
+                    data-ocid="auth.secondary_button"
+                    onClick={connectPlug}
+                    disabled={plugConnecting}
+                    variant="outline"
+                    className="w-full border-yellow-600/50 text-yellow-300 hover:bg-yellow-600/10 py-3"
+                  >
+                    {plugConnecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Connecting…
+                      </>
+                    ) : (
+                      <>
+                        <Wallet className="w-4 h-4 mr-2" />
+                        Connect Plug Wallet
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    Supports Plug browser extension wallet
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="userinfo"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm p-4"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4 text-black" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Connected as</p>
+                    <p className="text-sm font-mono text-yellow-300">
+                      {principal?.slice(0, 20)}…
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {balanceLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-yellow-400">
+                        {bittyBalance.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        BITTYICP
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {votingPower >= 1 ? (
+                          <span className="text-green-400">
+                            {votingPower} vote{votingPower !== 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span className="text-red-400">
+                            Not eligible (need 1,000+)
+                          </span>
+                        )}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Vote Cards */}
+        {isSignedIn && (
+          <>
+            {loadingVotes ? (
+              <div
+                data-ocid="votes.loading_state"
+                className="flex items-center justify-center py-12 gap-3 text-yellow-400"
               >
-                <HowItWorksSection />
-
-                {isAdmin && (
-                  <CreateProposalForm
-                    onCreated={loadProposals}
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>Loading votes…</span>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {latestBitty && (
+                  <VoteCard
+                    vote={latestBitty}
+                    principal={principal}
+                    votingPower={votingPower}
+                    actor={actor}
+                    isAdmin={isAdmin}
                     adminPassword={adminPassword}
                   />
                 )}
-
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Active Proposals", value: openProposals.length },
-                    { label: "Total Proposals", value: proposals.length },
-                    { label: "Min. to Vote", value: "1,000 BITTY" },
-                  ].map((stat) => (
-                    <div
-                      key={stat.label}
-                      className="glass-card-gold border border-[oklch(0.87_0.17_90/0.25)] rounded-xl p-3 text-center"
-                    >
-                      <p className="text-xl font-heading font-bold text-gold">
-                        {stat.value}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {stat.label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {loading ? (
-                  <div
-                    className="flex justify-center py-12"
-                    data-ocid="proposals.loading_state"
-                  >
-                    <Loader2 className="h-8 w-8 animate-spin text-gold" />
-                  </div>
-                ) : (
-                  <>
-                    {openProposals.length > 0 && (
-                      <div className="space-y-3">
-                        <h2 className="font-heading font-bold text-gold text-sm tracking-widest uppercase">
-                          Active Proposals
-                        </h2>
-                        {openProposals.map((p, idx) => (
-                          <div
-                            key={String(p.id)}
-                            data-ocid={`proposals.item.${idx + 1}`}
-                          >
-                            <ProposalCard
-                              proposal={p}
-                              onClick={() => setSelectedProposal(p)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {proposals.length === 0 && (
-                      <div
-                        className="text-center py-16 space-y-3"
-                        data-ocid="proposals.empty_state"
-                      >
-                        <VoteIcon className="h-12 w-12 text-gold/30 mx-auto" />
-                        <p className="text-foreground font-heading font-bold text-lg">
-                          No proposals yet
-                        </p>
-                        <p className="text-muted-foreground text-sm">
-                          {isAdmin
-                            ? "Create the first proposal using the form above."
-                            : "Check back soon for community governance proposals."}
-                        </p>
-                      </div>
-                    )}
-
-                    {closedProposals.length > 0 && (
-                      <div className="space-y-3">
-                        <h2 className="font-heading font-bold text-muted-foreground text-sm tracking-widest uppercase">
-                          Past Proposals
-                        </h2>
-                        {closedProposals.map((p, idx) => (
-                          <div
-                            key={String(p.id)}
-                            data-ocid={`proposals.item.${idx + 1}`}
-                          >
-                            <ProposalCard
-                              proposal={p}
-                              onClick={() => setSelectedProposal(p)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                {latestICP && (
+                  <VoteCard
+                    vote={latestICP}
+                    principal={principal}
+                    votingPower={votingPower}
+                    actor={actor}
+                    isAdmin={isAdmin}
+                    adminPassword={adminPassword}
+                  />
                 )}
-              </motion.div>
+                {!latestBitty && !latestICP && (
+                  <div
+                    data-ocid="votes.empty_state"
+                    className="text-center py-12 text-gray-500"
+                  >
+                    <VoteIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>No votes available yet this month.</p>
+                  </div>
+                )}
+              </div>
             )}
-          </AnimatePresence>
-        </main>
 
-        <footer className="relative z-10 border-t border-[oklch(0.87_0.17_90/0.15)] py-6 text-center">
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()}.{" "}
-            <a
-              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-gold transition-colors"
-            >
-              Built with love using caffeine.ai
-            </a>
-          </p>
-        </footer>
+            {/* Public Distribution Banner - visible to all */}
+            <PublicRewardsBanner pools={pools} />
+
+            {/* My Rewards Panel - signed in non-admin voters only */}
+            {isSignedIn && !isAdmin && principal && (
+              <MyRewardsPanel
+                votes={votes}
+                pools={pools}
+                principal={principal}
+                actor={actor}
+              />
+            )}
+
+            {/* Rewards Pools - Admin Only */}
+            {isAdmin && (
+              <RewardsSection
+                pools={pools}
+                isAdmin={isAdmin}
+                adminPassword={adminPassword}
+                actor={actor}
+                onRefresh={loadVotes}
+              />
+            )}
+
+            {/* How It Works */}
+            {/* Internal Rewards Wallet - Enhanced - Admin Only */}
+            {isAdmin && (
+              <section data-ocid="rewards.section">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
+                    <Gift className="h-5 w-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-lg text-white tracking-tight">
+                      Internal Rewards Wallet
+                    </h2>
+                    <p className="text-xs text-gray-400">
+                      Receives the losing option's % after each vote
+                      finalization. Distributed to voters based on
+                      winning-option power.
+                    </p>
+                  </div>
+                </div>
+                <RewardsPoolPanel
+                  isAdmin={isAdmin}
+                  adminPassword={adminPassword}
+                  currentUserPrincipal={principal}
+                />
+              </section>
+            )}
+            {/* Canister Deposit Address - Admin Only */}
+            {isAdmin && canisterId && (
+              <section data-ocid="deposit.section">
+                <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-yellow-400">
+                    <Wallet className="w-4 h-4 shrink-0" />
+                    <h3 className="font-bold text-sm uppercase tracking-widest">
+                      Canister Deposit Address
+                    </h3>
+                  </div>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    Before each vote cycle is finalized, send tokens here so the
+                    canister can automatically execute the distribution. This is
+                    the canister&#39;s own wallet — visible to all for
+                    verification.
+                  </p>
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">
+                      Canister Principal ID
+                    </p>
+                    <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
+                      <span className="text-yellow-300 text-xs font-mono flex-1 break-all">
+                        {canisterId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(canisterId);
+                          toast.success("Canister ID copied!");
+                        }}
+                        className="shrink-0 text-gray-400 hover:text-yellow-400 transition-colors"
+                        title="Copy canister ID"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-black/30 rounded-lg p-2 border border-white/10">
+                        <p className="text-yellow-400 font-semibold mb-0.5">
+                          For{" "}
+                        </p>
+                        <p className="text-gray-400">
+                          Send to the Principal ID above via the BITTYICP token
+                          transfer (ICRC-1)
+                        </p>
+                      </div>
+                      <div className="bg-black/30 rounded-lg p-2 border border-white/10">
+                        <p className="text-yellow-400 font-semibold mb-0.5">
+                          For{" "}
+                        </p>
+                        <p className="text-gray-400">
+                          Send to the Principal ID above — use NNS or your ICP
+                          wallet&#39;s send function
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            <HowItWorksSection />
+          </>
+        )}
+
+        {!isSignedIn && <HowItWorksSection />}
+
+        {/* Footer */}
+        <div className="text-center text-xs text-gray-600 pb-4">
+          © {new Date().getFullYear()}. Built with love using{" "}
+          <a
+            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-400 transition-colors"
+          >
+            caffeine.ai
+          </a>
+        </div>
       </div>
+
+      <Toaster richColors position="top-right" />
     </div>
   );
 }
