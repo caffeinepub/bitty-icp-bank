@@ -235,6 +235,7 @@ interface AdminPanelProps {
 }
 
 function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
+  const { actor } = useActor();
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
   const [editingId, setEditingId] = useState<bigint | null>(null);
@@ -263,6 +264,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       title: annTitle.trim(),
       body: annBody.trim(),
+      actor,
     });
     toast.success("Announcement posted!");
     setAnnTitle("");
@@ -279,13 +281,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       id,
       title: editTitle.trim(),
       body: editBody.trim(),
+      actor,
     });
     toast.success("Announcement updated!");
     setEditingId(null);
   }
 
   async function handleDeleteAnnouncement(id: bigint) {
-    await deleteAnn.mutateAsync({ password, id });
+    await deleteAnn.mutateAsync({ password, id, actor });
     toast.success("Announcement deleted");
   }
 
@@ -298,6 +301,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       icp: manualIcp.trim(),
       bitty: manualBitty.trim(),
+      actor,
     });
     toast.success("Treasury manual balances saved!");
     setManualIcp("");
@@ -305,7 +309,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   }
 
   async function handleClearTreasuryManual() {
-    await setManual.mutateAsync({ password, icp: "", bitty: "" });
+    await setManual.mutateAsync({ password, icp: "", bitty: "", actor });
     toast.success("Treasury manual balances cleared — live values will show");
     setManualIcp("");
     setManualBitty("");
@@ -319,13 +323,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     await setManualFundBalance.mutateAsync({
       password,
       fund: manualFund.trim(),
+      actor,
     });
     toast.success("Fund manual balance saved!");
     setManualFund("");
   }
 
   async function handleClearFundManual() {
-    await setManualFundBalance.mutateAsync({ password, fund: "" });
+    await setManualFundBalance.mutateAsync({ password, fund: "", actor });
     toast.success("Fund manual balance cleared — live value will show");
     setManualFund("");
   }
@@ -345,6 +350,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       await setManualBittyPriceMutation.mutateAsync({
         password,
         price: trimmed,
+        actor,
       });
       toast.success("BITTYICP price saved!");
       setManualBittyPrice("");
@@ -355,7 +361,11 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
 
   async function handleClearBittyPrice() {
     try {
-      await setManualBittyPriceMutation.mutateAsync({ password, price: "" });
+      await setManualBittyPriceMutation.mutateAsync({
+        password,
+        price: "",
+        actor,
+      });
       toast.success(
         "BITTYICP price cleared — live price will be used if available",
       );
@@ -372,7 +382,11 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       return;
     }
     try {
-      await setGamesWalletMutation.mutateAsync({ password, addr: trimmed });
+      await setGamesWalletMutation.mutateAsync({
+        password,
+        addr: trimmed,
+        actor,
+      });
       toast.success("Games wallet address saved!");
       setGamesWalletInput("");
     } catch {
@@ -382,7 +396,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
 
   async function handleClearGamesWallet() {
     try {
-      await setGamesWalletMutation.mutateAsync({ password, addr: "" });
+      await setGamesWalletMutation.mutateAsync({ password, addr: "", actor });
       toast.success("Games wallet cleared");
       setGamesWalletInput("");
     } catch {

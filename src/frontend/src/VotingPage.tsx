@@ -12,7 +12,7 @@ import {
   useGetVoteAllocations,
   useMarkRewardsDistributed,
 } from "@/hooks/useQueries";
-import { getBITTYBalance } from "@/utils/ledgerActors";
+import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -20,17 +20,21 @@ import {
   ChevronUp,
   Clock,
   Copy,
+  FileText,
   Gift,
   HelpCircle,
   Loader2,
   LogIn,
   LogOut,
   MessageSquare,
+  Plus,
   Send,
   ShieldCheck,
+  Trash2,
   Trophy,
   Vote as VoteIcon,
   Wallet,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -71,6 +75,34 @@ interface SplitAllocation {
   pctA: number;
   pctB: number;
   pctC: number;
+}
+
+interface CustomProposal {
+  id: bigint;
+  title: string;
+  description: string;
+  voteType: { ICP: null } | { BITTYICP: null };
+  options: string[];
+  openTime: bigint;
+  closeTime: bigint;
+  isFinalized: boolean;
+  totalVoteAmount: string;
+}
+
+interface CustomVoteResult {
+  optionLabel: string;
+  optionIndex: bigint;
+  totalWeightedPct: bigint;
+  voterCount: bigint;
+}
+
+interface CustomRewardsPoolEntry {
+  proposalId: bigint;
+  voteType: { ICP: null } | { BITTYICP: null };
+  losingOptionLabel: string;
+  losingOptionPct: bigint;
+  poolAmount: string;
+  distributed: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -123,6 +155,480 @@ function getVoteStatusInfo(vote: MonthlyVote): {
 function isVoteOpen(vote: MonthlyVote): boolean {
   const now = BigInt(Date.now()) * BigInt(1_000_000);
   return now >= vote.openTime && now <= vote.closeTime && !vote.isFinalized;
+}
+
+// ─── MyWalletPanel ───────────────────────────────────────────────────────────
+
+interface VerifiedWallet {
+  principal: string;
+  balance: number;
+  loading: boolean;
+}
+
+function MyWalletPanel({
+  principal,
+  actor,
+}: {
+  principal: string;
+  actor: any;
+}) {
+  const [verifiedWallets, setVerifiedWallets] = useState<VerifiedWallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  const [showAddWallet, setShowAddWallet] = useState(false);
+  const [externalInput, setExternalInput] = useState("");
+  const [verifyStep, setVerifyStep] = useState<"idle" | "pending" | "confirm">(
+    "idle",
+  );
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [sendDest, setSendDest] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendLoading, setSendLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+  const [icpBalance, setIcpBalance] = useState<number>(0);
+  const [icpBalanceLoading, setIcpBalanceLoading] = useState(false);
+  const [walletBittyBalance, setWalletBittyBalance] = useState<number>(0);
+
+  async function loadVerifiedWallets() {
+    if (!actor) return;
+    setWalletsLoading(true);
+    try {
+      const wallets: string[] = await (actor as any).getMyVerifiedWallets();
+      const items: VerifiedWallet[] = wallets.map((w) => ({
+        principal: w,
+        balance: 0,
+        loading: true,
+      }));
+      setVerifiedWallets(items);
+      // Load balances in parallel
+      wallets.forEach(async (w, i) => {
+        try {
+          const raw = await getBITTYBalance(w);
+          setVerifiedWallets((prev) =>
+            prev.map((v, vi) =>
+              vi === i
+                ? { ...v, balance: Number(raw) / 1e8, loading: false }
+                : v,
+            ),
+          );
+        } catch {
+          setVerifiedWallets((prev) =>
+            prev.map((v, vi) => (vi === i ? { ...v, loading: false } : v)),
+          );
+        }
+      });
+    } catch {
+    } finally {
+      setWalletsLoading(false);
+    }
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadVerifiedWallets is stable within MyWalletPanel
+  useEffect(() => {
+    if (actor && principal) loadVerifiedWallets();
+    if (principal) {
+      setIcpBalanceLoading(true);
+      Promise.all([
+        getICPBalance(principal)
+          .then((raw) => Number(raw) / 1e8)
+          .catch(() => 0),
+        getBITTYBalance(principal)
+          .then((raw) => Number(raw) / 1e8)
+          .catch(() => 0),
+      ])
+        .then(([icp, bitty]) => {
+          setIcpBalance(icp);
+          setWalletBittyBalance(bitty);
+        })
+        .finally(() => setIcpBalanceLoading(false));
+    }
+  }, [actor, principal]);
+
+  function copyAddress() {
+    navigator.clipboard.writeText(principal);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function startVerification() {
+    if (!externalInput.trim() || !actor) return;
+    setVerifyLoading(true);
+    try {
+      const res = await (actor as any).initWalletVerification(
+        externalInput.trim(),
+      );
+      if ("err" in res) {
+        if (
+          res.err.includes("already claimed") ||
+          res.err.includes("already verified")
+        ) {
+          toast.error("This wallet is already verified by another user.");
+        } else {
+          toast.error(res.err);
+        }
+        return;
+      }
+      setVerifyStep("confirm");
+      toast.success(
+        "Verification started! Now send 10 BITTYICP from your external wallet.",
+      );
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to start verification");
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
+  async function confirmVerification() {
+    if (!externalInput.trim() || !actor) return;
+    setVerifyLoading(true);
+    try {
+      const res = await (actor as any).confirmWalletVerification(
+        externalInput.trim(),
+      );
+      if ("err" in res) {
+        toast.error(res.err);
+        return;
+      }
+      toast.success("Wallet verified successfully!");
+      setVerifyStep("idle");
+      setExternalInput("");
+      setShowAddWallet(false);
+      await loadVerifiedWallets();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to confirm verification");
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
+  async function handleSend() {
+    if (!sendDest.trim() || !sendAmount.trim()) {
+      toast.error("Enter destination and amount");
+      return;
+    }
+    const amt = Number.parseFloat(sendAmount);
+    if (Number.isNaN(amt) || amt <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSendLoading(true);
+    try {
+      toast.error(
+        "To send BITTYICP, use NNS, Oisy, or ICRC-1 compatible wallet. Direct transfers from this panel require the Plug wallet.",
+      );
+    } catch (e: any) {
+      toast.error(e?.message ?? "Send failed");
+    } finally {
+      setSendLoading(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm overflow-hidden"
+    >
+      <div className="p-4 border-b border-yellow-600/20">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-yellow-400" />
+          <h3 className="font-bold text-yellow-300 text-sm">
+            My BITTY ICP Bank Wallet
+          </h3>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Receive Address */}
+        <div>
+          <p className="text-xs text-gray-400 mb-1 uppercase tracking-wider">
+            Your App Address (Receive)
+          </p>
+          <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
+            <span
+              className="text-yellow-300 text-xs font-mono flex-1 truncate"
+              title={principal}
+            >
+              {principal}
+            </span>
+            <button
+              type="button"
+              data-ocid="wallet.copy_button"
+              onClick={copyAddress}
+              className="shrink-0 text-gray-400 hover:text-yellow-400 transition-colors"
+            >
+              {copied ? (
+                <CheckCircle2 className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Send BITTYICP rewards here from any wallet
+          </p>
+        </div>
+
+        {/* Token Balances */}
+        <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
+          <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">
+            Token Balances
+          </p>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-gray-400">$BITTYICP</span>
+            {icpBalanceLoading ? (
+              <span className="text-xs text-gray-500">Loading…</span>
+            ) : (
+              <span className="text-sm font-bold text-yellow-400">
+                {walletBittyBalance.toLocaleString(undefined, {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                BITTYICP
+              </span>
+            )}
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-400">ICP</span>
+            {icpBalanceLoading ? (
+              <span className="text-xs text-gray-500">Loading…</span>
+            ) : (
+              <span className="text-sm font-bold text-blue-300">
+                {icpBalance.toLocaleString(undefined, {
+                  maximumFractionDigits: 4,
+                })}{" "}
+                ICP
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Send */}
+        <div>
+          <button
+            type="button"
+            data-ocid="wallet.toggle"
+            onClick={() => setShowSend(!showSend)}
+            className="flex items-center gap-2 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+          >
+            <Send className="w-3 h-3" />
+            {showSend ? "Hide" : "Send BITTYICP"}
+            {showSend ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+          {showSend && (
+            <div className="mt-2 space-y-2 p-3 bg-black/30 rounded-xl border border-white/10">
+              <Input
+                placeholder="Destination principal"
+                value={sendDest}
+                onChange={(e) => setSendDest(e.target.value)}
+                className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
+                data-ocid="wallet.input"
+              />
+              <Input
+                placeholder="Amount (BITTYICP)"
+                value={sendAmount}
+                onChange={(e) => setSendAmount(e.target.value)}
+                type="number"
+                min="0"
+                className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
+                data-ocid="wallet.send_input"
+              />
+              <p className="text-xs text-amber-400/70">
+                ⚠ Direct send requires Plug wallet connection. For NNS/Oisy, use
+                those apps to send BITTYICP to any address.
+              </p>
+              <Button
+                size="sm"
+                data-ocid="wallet.primary_button"
+                onClick={handleSend}
+                disabled={sendLoading}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
+              >
+                {sendLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Send className="w-3 h-3 mr-1" />
+                )}
+                Send
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Verified Wallets */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">
+              Verified External Wallets
+            </p>
+            {walletsLoading && (
+              <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+            )}
+          </div>
+
+          {verifiedWallets.length === 0 && !walletsLoading && (
+            <p className="text-xs text-gray-600 italic">
+              No external wallets verified yet.
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {verifiedWallets.map((w, i) => (
+              <div
+                key={w.principal}
+                data-ocid={`wallet.item.${i + 1}`}
+                className="flex items-center justify-between bg-black/30 rounded-xl border border-green-600/20 px-3 py-2"
+              >
+                <div>
+                  <p
+                    className="text-xs font-mono text-green-400 truncate max-w-[180px]"
+                    title={w.principal}
+                  >
+                    {w.principal.slice(0, 20)}…
+                  </p>
+                  {w.loading ? (
+                    <p className="text-xs text-gray-500">Loading…</p>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      {w.balance.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      BITTYICP · {Math.floor(w.balance / 1000)} vote
+                      {Math.floor(w.balance / 1000) !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+                <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs">
+                  Verified
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          {/* Add External Wallet */}
+          {!showAddWallet ? (
+            <button
+              type="button"
+              data-ocid="wallet.secondary_button"
+              onClick={() => setShowAddWallet(true)}
+              className="mt-2 flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              Add External Wallet
+            </button>
+          ) : (
+            <div className="mt-3 space-y-3 p-3 bg-black/30 rounded-xl border border-yellow-600/20">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-yellow-300">
+                  {verifyStep === "idle"
+                    ? "Step 1: Enter External Wallet"
+                    : "Step 2: Send 10 BITTYICP"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddWallet(false);
+                    setVerifyStep("idle");
+                    setExternalInput("");
+                  }}
+                  className="text-gray-500 hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+
+              {verifyStep === "idle" && (
+                <>
+                  <Input
+                    placeholder="Your external wallet principal (e.g. Oisy address)"
+                    value={externalInput}
+                    onChange={(e) => setExternalInput(e.target.value)}
+                    className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
+                    data-ocid="wallet.input"
+                  />
+                  {!actor && (
+                    <p className="text-xs text-yellow-500 text-center">
+                      Connecting to network... please wait a moment
+                    </p>
+                  )}
+                  <Button
+                    size="sm"
+                    data-ocid="wallet.submit_button"
+                    onClick={startVerification}
+                    disabled={verifyLoading || !externalInput.trim() || !actor}
+                    className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
+                  >
+                    {verifyLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : null}
+                    Start Verification
+                  </Button>
+                </>
+              )}
+
+              {verifyStep === "confirm" && (
+                <>
+                  <div className="text-xs text-gray-300 space-y-1">
+                    <p>
+                      Open your wallet{" "}
+                      <span className="font-mono text-yellow-300">
+                        {externalInput.slice(0, 16)}…
+                      </span>{" "}
+                      and send:
+                    </p>
+                    <p className="text-lg font-bold text-yellow-400 text-center py-1">
+                      10 BITTYICP
+                    </p>
+                    <p className="text-gray-400">To your app address:</p>
+                    <div className="flex items-center gap-2 bg-black/40 rounded-lg px-2 py-1.5">
+                      <span className="font-mono text-yellow-300 text-xs flex-1 truncate">
+                        {principal}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(principal);
+                          toast.success("Copied!");
+                        }}
+                        className="text-gray-500 hover:text-yellow-400"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    data-ocid="wallet.confirm_button"
+                    onClick={confirmVerification}
+                    disabled={verifyLoading}
+                    className="w-full bg-green-600 hover:bg-green-500 text-white text-xs font-bold"
+                  >
+                    {verifyLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                    )}
+                    I've Sent It — Verify
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setVerifyStep("idle")}
+                    className="w-full text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    ← Back
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 // ─── HowItWorks ──────────────────────────────────────────────────────────────
@@ -1539,6 +2045,830 @@ function MyRewardsPanel({
   );
 }
 
+// ─── DynamicSplitVotingUI ────────────────────────────────────────────────────
+
+function DynamicSplitVotingUI({
+  options,
+  onSubmit,
+  submitting,
+}: {
+  options: string[];
+  onSubmit: (allocs: Array<{ optionIndex: bigint; pct: bigint }>) => void;
+  submitting: boolean;
+}) {
+  const n = options.length;
+  const initPct = () => {
+    const base = Math.floor(100 / n);
+    const arr = Array(n).fill(base);
+    arr[0] += 100 - base * n;
+    return arr;
+  };
+  const [pcts, setPcts] = useState<number[]>(initPct);
+
+  const total = pcts.reduce((a, b) => a + b, 0);
+  const isValid = total === 100;
+
+  function handleChange(idx: number, val: number) {
+    const newVal = Math.min(100, Math.max(0, val));
+    const newPcts = [...pcts];
+    newPcts[idx] = newVal;
+    // Distribute remainder across other options
+    const remaining = 100 - newVal;
+    const others = newPcts.filter((_, i) => i !== idx);
+    const othersTotal = others.reduce((a, b) => a + b, 0);
+    if (othersTotal === 0) {
+      const split = Math.floor(remaining / (n - 1));
+      for (let i = 0, extra = remaining - split * (n - 1); i < n; i++) {
+        if (i !== idx) {
+          newPcts[i] = split + (extra > 0 ? 1 : 0);
+          if (extra > 0) extra--;
+        }
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        if (i !== idx) {
+          newPcts[i] = Math.round((pcts[i] / othersTotal) * remaining);
+        }
+      }
+      // Fix rounding
+      const newTotal = newPcts.reduce((a, b) => a + b, 0);
+      const diff = 100 - newTotal;
+      for (let i = 0; i < n; i++) {
+        if (i !== idx) {
+          newPcts[i] += diff;
+          break;
+        }
+      }
+    }
+    setPcts(newPcts);
+  }
+
+  const colors = [
+    "from-yellow-500 to-yellow-400",
+    "from-amber-500 to-amber-400",
+    "from-orange-500 to-orange-400",
+    "from-yellow-600 to-yellow-500",
+    "from-amber-600 to-amber-500",
+    "from-orange-600 to-orange-500",
+  ];
+
+  return (
+    <div className="space-y-4">
+      {options.map((label, idx) => (
+        <div key={label}>
+          <div className="flex justify-between mb-1">
+            <span className="text-xs text-yellow-300 font-medium truncate max-w-[70%]">
+              {label}
+            </span>
+            <span className="text-sm font-bold text-white">
+              {pcts[idx] ?? 0}%
+            </span>
+          </div>
+          <Slider
+            min={0}
+            max={100}
+            step={1}
+            value={[pcts[idx] ?? 0]}
+            onValueChange={([v]) => handleChange(idx, v)}
+            className="cursor-pointer"
+          />
+          <div className="mt-1 h-1.5 rounded-full overflow-hidden bg-white/10">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r ${colors[idx % colors.length]} transition-all`}
+              style={{ width: `${pcts[idx] ?? 0}%` }}
+            />
+          </div>
+        </div>
+      ))}
+      <div
+        className={`flex items-center justify-between px-3 py-2 rounded-lg border ${isValid ? "border-green-500/50 bg-green-500/10" : "border-red-500/50 bg-red-500/10"}`}
+      >
+        <span className="text-sm">Total allocated</span>
+        <span
+          className={`font-bold text-lg ${isValid ? "text-green-400" : "text-red-400"}`}
+        >
+          {total}%
+        </span>
+      </div>
+      {!isValid && (
+        <p className="text-xs text-red-400 text-center">
+          {100 - total > 0
+            ? `${100 - total}% remaining to allocate`
+            : `Over by ${total - 100}% — adjust sliders`}
+        </p>
+      )}
+      <Button
+        data-ocid="vote.submit_button"
+        className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold py-3 disabled:opacity-50"
+        disabled={!isValid || submitting}
+        onClick={() =>
+          onSubmit(
+            pcts.map((p, i) => ({ optionIndex: BigInt(i), pct: BigInt(p) })),
+          )
+        }
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> Submitting…
+          </>
+        ) : (
+          <>
+            <ShieldCheck className="w-4 h-4 mr-2" /> Submit Vote
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─── CustomProposalCard ───────────────────────────────────────────────────────
+
+function CustomProposalCard({
+  proposal,
+  principal,
+  votingPower,
+  actor,
+  isAdmin,
+  adminPassword,
+  onRefresh,
+}: {
+  proposal: CustomProposal;
+  principal: string | null;
+  votingPower: number;
+  actor: any;
+  isAdmin: boolean;
+  adminPassword: string;
+  onRefresh: () => void;
+}) {
+  const [results, setResults] = useState<CustomVoteResult[]>([]);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [tokenAmountInput, setTokenAmountInput] = useState(
+    proposal.totalVoteAmount || "",
+  );
+  const [savingAmount, setSavingAmount] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [marking, setMarking] = useState(false);
+
+  const now = BigInt(Date.now()) * BigInt(1_000_000);
+  const isOpen = !proposal.isFinalized && proposal.closeTime > now;
+  const isExpired = !proposal.isFinalized && proposal.closeTime <= now;
+  const isFinalized = proposal.isFinalized;
+
+  const loadResults = useCallback(async () => {
+    if (!actor) return;
+    try {
+      const r = await (actor as any).getCustomVoteResults(proposal.id);
+      setResults(r as CustomVoteResult[]);
+    } catch {}
+  }, [actor, proposal.id]);
+
+  const checkVoted = useCallback(async () => {
+    if (!actor || !principal) return;
+    try {
+      const v = await (actor as any).hasVotedOnCustomProposal(
+        proposal.id,
+        principal,
+      );
+      setHasVoted(!!v);
+    } catch {}
+  }, [actor, proposal.id, principal]);
+
+  useEffect(() => {
+    loadResults();
+    if (principal) checkVoted();
+    const interval = setInterval(() => {
+      loadResults();
+      if (principal) checkVoted();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadResults, checkVoted, principal]);
+
+  async function castVote(allocs: Array<{ optionIndex: bigint; pct: bigint }>) {
+    if (!actor || !principal) return;
+    setSubmitting(true);
+    try {
+      const ok = await (actor as any).castCustomVote(
+        proposal.id,
+        principal,
+        allocs,
+        BigInt(votingPower),
+      );
+      if (ok) {
+        toast.success("Vote submitted successfully!");
+        setHasVoted(true);
+        await loadResults();
+      } else {
+        toast.error(
+          "Vote failed. You may have already voted or insufficient power.",
+        );
+      }
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function saveTokenAmount() {
+    if (!actor) return;
+    setSavingAmount(true);
+    try {
+      const ok = await (actor as any).setCustomProposalAmount(
+        adminPassword,
+        proposal.id,
+        tokenAmountInput,
+      );
+      if (ok) {
+        toast.success("Token amount saved!");
+        onRefresh();
+      } else toast.error("Failed to save amount.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setSavingAmount(false);
+    }
+  }
+
+  async function finalizeVote() {
+    if (!actor) return;
+    setFinalizing(true);
+    try {
+      const ok = await (actor as any).finalizeCustomProposal(
+        adminPassword,
+        proposal.id,
+      );
+      if (ok) {
+        toast.success("Proposal finalized!");
+        onRefresh();
+      } else toast.error("Failed to finalize.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
+  async function markDistributed() {
+    if (!actor) return;
+    setMarking(true);
+    try {
+      const ok = await (actor as any).markCustomRewardsDistributed(
+        adminPassword,
+        proposal.id,
+      );
+      if (ok) {
+        toast.success("Marked as distributed!");
+        onRefresh();
+      } else toast.error("Failed to mark distributed.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setMarking(false);
+    }
+  }
+
+  const totalVotes = results.reduce((s, r) => s + Number(r.voterCount), 0);
+  const maxPct = results.reduce(
+    (m, r) => Math.max(m, Number(r.totalWeightedPct)),
+    0,
+  );
+
+  const voteTypeBadge = "ICP" in proposal.voteType ? "$ICP" : "$BITTYICP";
+  const statusColor = isOpen
+    ? "border-green-500/60 text-green-400 bg-green-500/10"
+    : isExpired
+      ? "border-amber-500/60 text-amber-400 bg-amber-500/10"
+      : "border-gray-500/60 text-gray-400 bg-gray-500/10";
+  const statusLabel = isOpen ? "OPEN" : isExpired ? "EXPIRED" : "FINALIZED";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm overflow-hidden"
+    >
+      <div className="p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${statusColor}`}
+              >
+                {statusLabel}
+              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full border border-yellow-600/50 text-yellow-400 bg-yellow-500/10 font-semibold">
+                {voteTypeBadge}
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white leading-snug">
+              {proposal.title}
+            </h3>
+            {proposal.description && (
+              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                {proposal.description}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Time remaining */}
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <Clock className="w-3.5 h-3.5 shrink-0" />
+          <span>{timeRemaining(proposal.closeTime)}</span>
+          {proposal.totalVoteAmount && proposal.totalVoteAmount !== "0" && (
+            <span className="ml-auto text-yellow-400 font-semibold">
+              {proposal.totalVoteAmount} {voteTypeBadge}
+            </span>
+          )}
+        </div>
+
+        {/* Results */}
+        {results.length > 0 && (
+          <div className="space-y-2">
+            {results.map((r) => {
+              const pct = Number(r.totalWeightedPct);
+              const isWinner = pct === maxPct && pct > 0;
+              return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+                <div key={String(r.optionIndex)}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span
+                      className={`font-medium ${isWinner && isFinalized ? "text-yellow-400" : "text-gray-300"}`}
+                    >
+                      {r.optionLabel}
+                      {isWinner && isFinalized && (
+                        <Trophy className="w-3 h-3 inline ml-1" />
+                      )}
+                    </span>
+                    <span className="text-gray-400">
+                      {pct.toFixed(1)}% · {String(r.voterCount)} voters
+                    </span>
+                  </div>
+                  <Progress value={pct} className="h-1.5" />
+                </div>
+              );
+            })}
+            <p className="text-xs text-gray-500 text-right">
+              {totalVotes} total voters
+            </p>
+          </div>
+        )}
+
+        {/* Vote UI */}
+        {isOpen && principal && votingPower > 0 && !hasVoted && (
+          <div className="border-t border-yellow-600/20 pt-4">
+            <p className="text-xs text-yellow-400 mb-3 font-semibold">
+              Voting Power: {votingPower} · Allocate 100% across options
+            </p>
+            <DynamicSplitVotingUI
+              options={proposal.options}
+              onSubmit={castVote}
+              submitting={submitting}
+            />
+          </div>
+        )}
+
+        {isOpen && principal && votingPower > 0 && hasVoted && (
+          <div className="flex items-center gap-2 text-green-400 text-sm py-2 border-t border-yellow-600/20 pt-4">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>You have voted on this proposal</span>
+          </div>
+        )}
+
+        {isOpen && principal && votingPower === 0 && (
+          <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-2">
+            You need at least 1,000 $BITTYICP to vote. Your current balance
+            gives {votingPower} voting power.
+          </div>
+        )}
+
+        {/* Admin controls */}
+        {isAdmin && (
+          <div className="border-t border-yellow-600/20 pt-4 space-y-3">
+            <p className="text-xs text-yellow-400 font-semibold uppercase tracking-wider">
+              Admin Controls
+            </p>
+            <div className="flex gap-2">
+              <Input
+                data-ocid="proposal.input"
+                value={tokenAmountInput}
+                onChange={(e) => setTokenAmountInput(e.target.value)}
+                placeholder="Token amount for this proposal"
+                className="bg-black/40 border-yellow-600/30 text-gray-200 text-xs h-9"
+              />
+              <Button
+                data-ocid="proposal.save_button"
+                size="sm"
+                onClick={saveTokenAmount}
+                disabled={savingAmount}
+                className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-xs"
+              >
+                {savingAmount ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  "Set"
+                )}
+              </Button>
+            </div>
+            {(isOpen || isExpired) && (
+              <Button
+                data-ocid="proposal.confirm_button"
+                size="sm"
+                onClick={finalizeVote}
+                disabled={finalizing}
+                variant="outline"
+                className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-xs w-full"
+              >
+                {finalizing ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                ) : null}
+                Finalize Proposal
+              </Button>
+            )}
+            {isFinalized && (
+              <Button
+                data-ocid="proposal.secondary_button"
+                size="sm"
+                onClick={markDistributed}
+                disabled={marking}
+                variant="outline"
+                className="border-green-500/50 text-green-400 hover:bg-green-500/10 text-xs w-full"
+              >
+                {marking ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                ) : null}
+                Mark Rewards Distributed
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Chat */}
+        <ChatSection voteId={proposal.id} principal={principal} actor={actor} />
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── CreateProposalForm ───────────────────────────────────────────────────────
+
+function CreateProposalForm({
+  actor,
+  adminPassword,
+  onCreated,
+}: {
+  actor: any;
+  adminPassword: string;
+  onCreated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [voteType, setVoteType] = useState<"ICP" | "BITTYICP">("ICP");
+  const [options, setOptions] = useState(["", ""]);
+  const [endDateTime, setEndDateTime] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  function addOption() {
+    if (options.length < 6) setOptions([...options, ""]);
+  }
+
+  function removeOption(idx: number) {
+    if (options.length > 2) setOptions(options.filter((_, i) => i !== idx));
+  }
+
+  function updateOption(idx: number, val: string) {
+    const next = [...options];
+    next[idx] = val;
+    setOptions(next);
+  }
+
+  async function handleSubmit() {
+    if (!title.trim() || !endDateTime || options.some((o) => !o.trim())) {
+      toast.error("Please fill in all fields and options.");
+      return;
+    }
+    const closeTimeNs =
+      BigInt(new Date(endDateTime).getTime()) * BigInt(1_000_000);
+    const voteTypeArg = voteType === "ICP" ? { ICP: null } : { BITTYICP: null };
+    setSubmitting(true);
+    try {
+      const result = await (actor as any).createCustomProposal(
+        adminPassword,
+        title.trim(),
+        description.trim(),
+        voteTypeArg,
+        options.map((o) => o.trim()),
+        closeTimeNs,
+      );
+      if (Array.isArray(result) && result.length > 0) {
+        toast.success("Proposal created successfully!");
+        setTitle("");
+        setDescription("");
+        setOptions(["", ""]);
+        setEndDateTime("");
+        setOpen(false);
+        onCreated();
+      } else {
+        toast.error("Failed to create proposal. Check password or inputs.");
+      }
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-yellow-600/30 bg-black/40 overflow-hidden">
+      <button
+        type="button"
+        data-ocid="proposal.open_modal_button"
+        onClick={() => setOpen((p) => !p)}
+        className="w-full flex items-center justify-between p-4 text-yellow-300 hover:text-yellow-200 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          <span className="text-sm font-bold uppercase tracking-wider">
+            Create New Proposal
+          </span>
+        </div>
+        {open ? (
+          <ChevronUp className="w-4 h-4" />
+        ) : (
+          <ChevronDown className="w-4 h-4" />
+        )}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 border-t border-yellow-600/20 space-y-4">
+              <div>
+                <label
+                  htmlFor="proposal-title"
+                  className="text-xs text-gray-400 font-medium mb-1 block"
+                >
+                  Proposal Title *
+                </label>
+                <Input
+                  id="proposal-title"
+                  data-ocid="proposal.input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Enter proposal title"
+                  className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="proposal-desc"
+                  className="text-xs text-gray-400 font-medium mb-1 block"
+                >
+                  Description
+                </label>
+                <Textarea
+                  id="proposal-desc"
+                  data-ocid="proposal.textarea"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe this proposal..."
+                  rows={3}
+                  className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm resize-none"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">
+                  Treasury Type *
+                </p>
+                <div className="flex gap-2">
+                  {(["ICP", "BITTYICP"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setVoteType(t)}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-colors ${voteType === t ? "border-yellow-500 bg-yellow-500/20 text-yellow-300" : "border-yellow-600/30 text-gray-400 hover:border-yellow-500/50"}`}
+                    >
+                      ${t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium mb-1">
+                  Options (2–6) *
+                </p>
+                <div className="space-y-2">
+                  {options.map((opt, idx) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: options list is order-dependent
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        data-ocid="proposal.input"
+                        value={opt}
+                        onChange={(e) => updateOption(idx, e.target.value)}
+                        placeholder={`Option ${idx + 1}`}
+                        className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
+                      />
+                      {options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removeOption(idx)}
+                          className="text-red-400 hover:text-red-300 p-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {options.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={addOption}
+                    className="mt-2 flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Option
+                  </button>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="proposal-end"
+                  className="text-xs text-gray-400 font-medium mb-1 block"
+                >
+                  End Date & Time *
+                </label>
+                <Input
+                  id="proposal-end"
+                  data-ocid="proposal.input"
+                  type="datetime-local"
+                  value={endDateTime}
+                  onChange={(e) => setEndDateTime(e.target.value)}
+                  className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Proposal opens immediately. Set when voting should close.
+                </p>
+              </div>
+              <Button
+                data-ocid="proposal.submit_button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" /> Creating…
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 mr-2" /> Create Proposal
+                  </>
+                )}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── CustomRewardsBanner ──────────────────────────────────────────────────────
+
+function CustomRewardsBanner({
+  customPools,
+  customProposals,
+  isAdmin,
+  adminPassword,
+  actor,
+  onRefresh,
+}: {
+  customPools: CustomRewardsPoolEntry[];
+  customProposals: CustomProposal[];
+  isAdmin: boolean;
+  adminPassword: string;
+  actor: any;
+  onRefresh: () => void;
+}) {
+  const [marking, setMarking] = useState<bigint | null>(null);
+
+  if (customPools.length === 0) return null;
+
+  async function markDistributed(proposalId: bigint) {
+    if (!actor) return;
+    setMarking(proposalId);
+    try {
+      const ok = await (actor as any).markCustomRewardsDistributed(
+        adminPassword,
+        proposalId,
+      );
+      if (ok) {
+        toast.success("Marked as distributed!");
+        onRefresh();
+      } else toast.error("Failed to mark distributed.");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setMarking(null);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm p-5"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Gift className="w-5 h-5 text-yellow-400" />
+        <h3 className="text-base font-bold text-yellow-300">
+          Community Proposal Rewards
+        </h3>
+      </div>
+      <div className="space-y-3">
+        {customPools.map((pool) => {
+          const proposal = customProposals.find(
+            (p) => p.id === pool.proposalId,
+          );
+          const title =
+            proposal?.title ?? `Proposal #${String(pool.proposalId)}`;
+          const voteTypeBadge = "ICP" in pool.voteType ? "$ICP" : "$BITTYICP";
+          return (
+            <div
+              key={String(pool.proposalId)}
+              data-ocid="rewards.item.1"
+              className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white/5 border border-yellow-600/20"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-yellow-300 truncate">
+                  {title}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {voteTypeBadge} · Losing:{" "}
+                  <span className="text-yellow-400">
+                    {pool.losingOptionLabel}
+                  </span>{" "}
+                  ({Number(pool.losingOptionPct)}%)
+                </p>
+                {isAdmin ? (
+                  <p className="text-xs text-gray-400">
+                    Pool: <span className="text-white">{pool.poolAmount}</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    Total Distribution Pool:{" "}
+                    <span className="text-white">
+                      {pool.poolAmount} {voteTypeBadge}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {pool.distributed ? (
+                  <span className="text-xs text-green-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Distributed
+                  </span>
+                ) : (
+                  <span className="text-xs text-amber-400 flex items-center gap-1">
+                    <Gift className="w-3 h-3" />
+                    Pending
+                  </span>
+                )}
+                {isAdmin && !pool.distributed && (
+                  <Button
+                    data-ocid="rewards.confirm_button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => markDistributed(pool.proposalId)}
+                    disabled={marking === pool.proposalId}
+                    className="border-green-500/50 text-green-400 hover:bg-green-500/10 text-xs"
+                  >
+                    {marking === pool.proposalId ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      "Mark Distributed"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Main VotingPage ─────────────────────────────────────────────────────────
 
 export default function VotingPage({
@@ -1561,6 +2891,8 @@ export default function VotingPage({
   const [votes, setVotes] = useState<MonthlyVote[]>([]);
   const [pools, setPools] = useState<RewardsPoolEntry[]>([]);
   const [loadingVotes, setLoadingVotes] = useState(false);
+  const [customProposals, setCustomProposals] = useState<CustomProposal[]>([]);
+  const [customPools, setCustomPools] = useState<CustomRewardsPoolEntry[]>([]);
 
   // Canister deposit address
   const [canisterId, setCanisterId] = useState<string>("");
@@ -1576,18 +2908,26 @@ export default function VotingPage({
   const votingPower = Math.floor(bittyBalance / 1000);
   const isSignedIn = !!principal;
 
+  // Effective voting power (same as votingPower; verified wallets shown in wallet panel)
+  const effectiveVotingPower = votingPower;
+
   // Load votes on actor ready
   const loadVotes = useCallback(async () => {
     const a = actor as any;
     if (!a) return;
     setLoadingVotes(true);
     try {
-      const [allVotes, allPools] = await Promise.all([
-        a.getAllVotes(),
-        a.getRewardsPools(),
-      ]);
+      const [allVotes, allPools, customProps, customPoolsData] =
+        await Promise.all([
+          a.getAllVotes(),
+          a.getRewardsPools(),
+          a.getCustomProposals().catch(() => []),
+          a.getCustomRewardsPools().catch(() => []),
+        ]);
       setVotes(allVotes);
       setPools(allPools);
+      setCustomProposals(customProps as CustomProposal[]);
+      setCustomPools(customPoolsData as CustomRewardsPoolEntry[]);
     } catch {
     } finally {
       setLoadingVotes(false);
@@ -1845,6 +3185,25 @@ export default function VotingPage({
           )}
         </AnimatePresence>
 
+        {/* Voting Power Boost Announcement */}
+        {isSignedIn && (
+          <div className="w-full rounded-xl border border-yellow-500/60 bg-yellow-900/20 px-4 py-3 text-center">
+            <p className="text-sm font-extrabold text-yellow-300 uppercase tracking-wide">
+              🔗 Boost Your Voting Power
+            </p>
+            <p className="text-xs text-yellow-200 mt-1">
+              Hold $BITTYICP in an external wallet like Oisy? Verify it below to
+              add its balance to your voting power. Each verified wallet counts
+              toward your total votes.
+            </p>
+          </div>
+        )}
+
+        {/* My Wallet Panel */}
+        {isSignedIn && principal && (
+          <MyWalletPanel principal={principal} actor={actor} />
+        )}
+
         {/* Vote Cards */}
         {isSignedIn && (
           <>
@@ -1862,7 +3221,7 @@ export default function VotingPage({
                   <VoteCard
                     vote={latestBitty}
                     principal={principal}
-                    votingPower={votingPower}
+                    votingPower={effectiveVotingPower}
                     actor={actor}
                     isAdmin={isAdmin}
                     adminPassword={adminPassword}
@@ -1872,7 +3231,7 @@ export default function VotingPage({
                   <VoteCard
                     vote={latestICP}
                     principal={principal}
-                    votingPower={votingPower}
+                    votingPower={effectiveVotingPower}
                     actor={actor}
                     isAdmin={isAdmin}
                     adminPassword={adminPassword}
@@ -1889,6 +3248,67 @@ export default function VotingPage({
                 )}
               </div>
             )}
+
+            {/* Community Proposals */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
+                  <FileText className="h-5 w-5 text-yellow-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg text-white tracking-tight">
+                    Community Proposals
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Admin-created votes on specific treasury decisions
+                  </p>
+                </div>
+              </div>
+
+              {/* Admin: Create Proposal Form */}
+              {isAdmin && (
+                <CreateProposalForm
+                  actor={actor}
+                  adminPassword={adminPassword}
+                  onCreated={loadVotes}
+                />
+              )}
+
+              {customProposals.length === 0 ? (
+                <div
+                  data-ocid="proposals.empty_state"
+                  className="text-center py-8 text-gray-500"
+                >
+                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No community proposals yet.</p>
+                  {isAdmin && (
+                    <p className="text-xs mt-1">
+                      Create one above to get started.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {customProposals.map((p) => (
+                    <CustomProposalCard
+                      key={String(p.id)}
+                      proposal={p}
+                      principal={principal}
+                      votingPower={effectiveVotingPower}
+                      actor={actor}
+                      isAdmin={isAdmin}
+                      adminPassword={adminPassword}
+                      onRefresh={loadVotes}
+                    />
+                  ))}
+                </div>
+              )}
+            </motion.div>
 
             {/* Public Distribution Banner - visible to all */}
             <PublicRewardsBanner pools={pools} />
@@ -1907,6 +3327,18 @@ export default function VotingPage({
             {isAdmin && (
               <RewardsSection
                 pools={pools}
+                isAdmin={isAdmin}
+                adminPassword={adminPassword}
+                actor={actor}
+                onRefresh={loadVotes}
+              />
+            )}
+
+            {/* Custom Proposal Rewards - All users */}
+            {customPools.length > 0 && (
+              <CustomRewardsBanner
+                customPools={customPools}
+                customProposals={customProposals}
                 isAdmin={isAdmin}
                 adminPassword={adminPassword}
                 actor={actor}

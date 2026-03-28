@@ -155,6 +155,34 @@ export interface backendInterface {
     setManualBittyPrice(password: string, price: string): Promise<boolean>;
     setManualFundBalance(password: string, fund: string): Promise<boolean>;
     updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
+    getActiveVotes(): Promise<any[]>;
+    getAllVotes(): Promise<any[]>;
+    castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean>;
+    hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean>;
+    getVoteAllocations(voteId: bigint): Promise<any[]>;
+    getVoteResults(voteId: bigint): Promise<any[]>;
+    setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    finalizeVote(password: string, voteId: bigint): Promise<boolean>;
+    markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
+    getRewardsPools(): Promise<any[]>;
+    setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
+    setGamesWallet(password: string, addr: string): Promise<boolean>;
+    getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }>;
+    createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint): Promise<any | null>;
+    getCustomProposals(): Promise<any[]>;
+    castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: any[], votingPower: bigint): Promise<boolean>;
+    hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    getCustomVoteAllocations(proposalId: bigint): Promise<any[]>;
+    getCustomVoteResults(proposalId: bigint): Promise<any[]>;
+    setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean>;
+    finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean>;
+    getCustomRewardsPools(): Promise<any[]>;
+    markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
+    initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }>;
+    confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }>;
+    getMyVerifiedWallets(): Promise<string[]>;
+    isExternalWalletClaimed(wallet: string): Promise<boolean>;
+    getWalletOwner(wallet: string): Promise<string | null>;
 }
 import type { Announcement as _Announcement, ChatMessage as _ChatMessage, Proposal as _Proposal, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -499,6 +527,118 @@ export class Backend implements backendInterface {
             const result = await this.actor.updateAnnouncement(arg0, arg1, arg2, arg3);
             return result;
         }
+    }
+    async getActiveVotes(): Promise<any[]> {
+        const result = await this.actor.getActiveVotes();
+        return result;
+    }
+    async getAllVotes(): Promise<any[]> {
+        const result = await this.actor.getAllVotes();
+        return result;
+    }
+    async castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean> {
+        const result = await this.actor.castSplitVote(voteId, voterPrincipal, pctA, pctB, pctC, votingPower);
+        return result;
+    }
+    async hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean> {
+        const result = await this.actor.hasVotedOnVote(voteId, voterPrincipal);
+        return result;
+    }
+    async getVoteAllocations(voteId: bigint): Promise<any[]> {
+        const result = await this.actor.getVoteAllocations(voteId);
+        return result;
+    }
+    async getVoteResults(voteId: bigint): Promise<any[]> {
+        const result = await this.actor.getVoteResults(voteId);
+        return result;
+    }
+    async setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean> {
+        const result = await this.actor.setVoteAmount(password, voteId, amount);
+        return result;
+    }
+    async finalizeVote(password: string, voteId: bigint): Promise<boolean> {
+        const result = await this.actor.finalizeVote(password, voteId);
+        return result;
+    }
+    async markRewardsDistributed(password: string, voteId: bigint): Promise<boolean> {
+        const result = await this.actor.markRewardsDistributed(password, voteId);
+        return result;
+    }
+    async getRewardsPools(): Promise<any[]> {
+        const result = await this.actor.getRewardsPools();
+        return result;
+    }
+    async setNeuronTopupAddress(password: string, addr: string): Promise<boolean> {
+        const result = await this.actor.setNeuronTopupAddress(password, addr);
+        return result;
+    }
+    async setGamesWallet(password: string, addr: string): Promise<boolean> {
+        const result = await this.actor.setGamesWallet(password, addr);
+        return result;
+    }
+    async getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }> {
+        const result = await this.actor.getAdminConfig();
+        return result;
+    }
+    async createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint): Promise<any | null> {
+        const result = await this.actor.createCustomProposal(password, title, description, voteType, options, closeTimeNs);
+        return result.length === 0 ? null : result[0];
+    }
+    async getCustomProposals(): Promise<any[]> {
+        const result = await this.actor.getCustomProposals();
+        return result;
+    }
+    async castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: any[], votingPower: bigint): Promise<boolean> {
+        const result = await this.actor.castCustomVote(proposalId, voterPrincipal, allocations, votingPower);
+        return result;
+    }
+    async hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean> {
+        const result = await this.actor.hasVotedOnCustomProposal(proposalId, voterPrincipal);
+        return result;
+    }
+    async getCustomVoteAllocations(proposalId: bigint): Promise<any[]> {
+        const result = await this.actor.getCustomVoteAllocations(proposalId);
+        return result;
+    }
+    async getCustomVoteResults(proposalId: bigint): Promise<any[]> {
+        const result = await this.actor.getCustomVoteResults(proposalId);
+        return result;
+    }
+    async setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean> {
+        const result = await this.actor.setCustomProposalAmount(password, proposalId, amount);
+        return result;
+    }
+    async finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean> {
+        const result = await this.actor.finalizeCustomProposal(password, proposalId);
+        return result;
+    }
+    async getCustomRewardsPools(): Promise<any[]> {
+        const result = await this.actor.getCustomRewardsPools();
+        return result;
+    }
+    async markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean> {
+        const result = await this.actor.markCustomRewardsDistributed(password, proposalId);
+        return result;
+    }
+    async initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }> {
+        const result = await this.actor.initWalletVerification(externalWallet);
+        return result;
+    }
+    async confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }> {
+        const result = await this.actor.confirmWalletVerification(externalWallet);
+        return result;
+    }
+    async getMyVerifiedWallets(): Promise<string[]> {
+        const result = await this.actor.getMyVerifiedWallets();
+        return result;
+    }
+    async isExternalWalletClaimed(wallet: string): Promise<boolean> {
+        const result = await this.actor.isExternalWalletClaimed(wallet);
+        return result;
+    }
+    async getWalletOwner(wallet: string): Promise<string | null> {
+        const result = await this.actor.getWalletOwner(wallet);
+        return result.length === 0 ? null : result[0];
     }
 }
 function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {

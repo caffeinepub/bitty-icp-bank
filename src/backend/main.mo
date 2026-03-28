@@ -36,7 +36,6 @@ actor {
     weight : Nat;
   };
 
-  // Old ChatMessage kept for stable variable compatibility
   type OldChatMessage = {
     id : Nat;
     proposalId : Nat;
@@ -45,7 +44,7 @@ actor {
     timestamp : Int;
   };
 
-  //------------------------------ New Types ------------------------------
+  //------------------------------ Types ------------------------------
 
   type Announcement = {
     id : Nat;
@@ -54,7 +53,6 @@ actor {
     timestamp : Int;
   };
 
-  // New chat message uses voteId
   type ChatMessage = {
     id : Nat;
     voteId : Nat;
@@ -104,9 +102,49 @@ actor {
     voterCount : Nat;
   };
 
+  // Custom Proposal Types
+  type CustomProposal = {
+    id : Nat;
+    title : Text;
+    description : Text;
+    voteType : VoteType;
+    options : [Text];
+    openTime : Int;
+    closeTime : Int;
+    isFinalized : Bool;
+    totalVoteAmount : Text;
+  };
+
+  type CustomOptionAlloc = {
+    optionIndex : Nat;
+    pct : Nat;
+  };
+
+  type CustomVoteAllocation = {
+    proposalId : Nat;
+    voterPrincipal : Text;
+    allocations : [CustomOptionAlloc];
+    votingPower : Nat;
+  };
+
+  type CustomVoteResult = {
+    optionLabel : Text;
+    optionIndex : Nat;
+    totalWeightedPct : Nat;
+    voterCount : Nat;
+  };
+
+  type CustomRewardsPoolEntry = {
+    proposalId : Nat;
+    voteType : VoteType;
+    losingOptionLabel : Text;
+    losingOptionPct : Nat;
+    poolAmount : Text;
+    distributed : Bool;
+  };
+
   //------------------------------ State ------------------------------
 
-  // Stable state -- persists across canister upgrades
   stable var WALLET_PRINCIPAL : Text = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
   stable var FUND_WALLET_PRINCIPAL : Text = "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
   stable var ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
@@ -114,17 +152,14 @@ actor {
   stable var nextProposalId : Nat = 1;
   stable var proposals : [OldProposal] = [];
   stable var votes : [OldVote] = [];
-  // Old chat messages (kept for upgrade compat, no longer used)
   stable var chatMessages : [OldChatMessage] = [];
 
-  // New state (stable)
   stable var announcements : [Announcement] = [];
   stable var nextAnnouncementId : Nat = 1;
   stable var nextVoteId : Nat = 1;
   stable var nextChatId : Nat = 1;
   stable var monthlyVotes : [MonthlyVote] = [];
   stable var voteAllocations : [VoteAllocation] = [];
-  // New chat messages (voteId-based, stable)
   stable var voteMessages : [ChatMessage] = [];
   stable var rewardsPools : [RewardsPoolEntry] = [];
   stable var manualICP : Text = "";
@@ -133,6 +168,12 @@ actor {
   stable var manualBittyPriceUSD : Text = "";
   stable var neuronTopupAddress : Text = "";
   stable var gamesWallet : Text = "";
+
+  // Custom proposals state
+  stable var customProposals : [CustomProposal] = [];
+  stable var nextCustomProposalId : Nat = 1;
+  stable var customVoteAllocations : [CustomVoteAllocation] = [];
+  stable var customRewardsPools : [CustomRewardsPoolEntry] = [];
 
   let ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -189,7 +230,7 @@ actor {
     else
       [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     var m = 0;
-    while (m < month - 1) {
+    while (m + 1 < month) {
       totalDays += mDays[m];
       m += 1;
     };
@@ -536,6 +577,183 @@ actor {
     { neuronTopupAddress = neuronTopupAddress; gamesWallet = gamesWallet };
   };
 
+  //------------------------------ Custom Proposals ------------------------------
+
+  public shared func createCustomProposal(
+    password : Text,
+    title : Text,
+    description : Text,
+    voteType : VoteType,
+    options : [Text],
+    closeTimeNs : Int,
+  ) : async ?CustomProposal {
+    if (not isAdmin(password)) return null;
+    if (options.size() < 2 or options.size() > 6) return null;
+    let proposal : CustomProposal = {
+      id = nextCustomProposalId;
+      title = title;
+      description = description;
+      voteType = voteType;
+      options = options;
+      openTime = Time.now();
+      closeTime = closeTimeNs;
+      isFinalized = false;
+      totalVoteAmount = "";
+    };
+    customProposals := customProposals.concat([proposal]);
+    nextCustomProposalId += 1;
+    ?proposal;
+  };
+
+  public query func getCustomProposals() : async [CustomProposal] {
+    customProposals;
+  };
+
+  public shared ({ caller }) func castCustomVote(
+    proposalId : Nat,
+    voterPrincipal : Text,
+    allocations : [CustomOptionAlloc],
+    votingPower : Nat,
+  ) : async Bool {
+    if (caller.toText() != voterPrincipal) {
+      Runtime.trap("Unauthorized: caller does not match voterPrincipal");
+    };
+    var totalPct : Nat = 0;
+    for (a in allocations.vals()) {
+      totalPct += a.pct;
+    };
+    if (totalPct != 100) return false;
+    let nowNs = Time.now();
+    let propOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
+    switch (propOpt) {
+      case (null) { return false };
+      case (?p) {
+        if (p.isFinalized or nowNs < p.openTime or nowNs > p.closeTime) return false;
+      };
+    };
+    let alreadyVoted = customVoteAllocations.any(func(a : CustomVoteAllocation) : Bool {
+      a.proposalId == proposalId and a.voterPrincipal == voterPrincipal;
+    });
+    if (alreadyVoted) return false;
+    let alloc : CustomVoteAllocation = { proposalId; voterPrincipal; allocations; votingPower };
+    customVoteAllocations := customVoteAllocations.concat([alloc]);
+    true;
+  };
+
+  public query func hasVotedOnCustomProposal(proposalId : Nat, voterPrincipal : Text) : async Bool {
+    customVoteAllocations.any(func(a : CustomVoteAllocation) : Bool {
+      a.proposalId == proposalId and a.voterPrincipal == voterPrincipal;
+    });
+  };
+
+  public query func getCustomVoteAllocations(proposalId : Nat) : async [CustomVoteAllocation] {
+    customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
+  };
+
+  func computeCustomVoteResults(proposalId : Nat) : [CustomVoteResult] {
+    let propOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
+    switch (propOpt) {
+      case (null) { return [] };
+      case (?p) {
+        let allocs = customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
+        let nOpts = p.options.size();
+        if (nOpts == 0) return [];
+        // sum weighted pct per option
+        var sumPower : Nat = 0;
+        for (a in allocs.values()) { sumPower += a.votingPower; };
+        // build results
+        var results : [CustomVoteResult] = [];
+        var i = 0;
+        while (i < nOpts) {
+          let optLabel = p.options[i];
+          var weightedSum : Nat = 0;
+          var voterCount : Nat = 0;
+          for (a in allocs.values()) {
+            for (alloc in a.allocations.vals()) {
+              if (alloc.optionIndex == i) {
+                weightedSum += alloc.pct * a.votingPower;
+                voterCount += 1;
+              };
+            };
+          };
+          let wPct = if (sumPower == 0) 0 else weightedSum / sumPower;
+          results := results.concat([{ optionLabel = optLabel; optionIndex = i; totalWeightedPct = wPct; voterCount = voterCount }]);
+          i += 1;
+        };
+        results;
+      };
+    };
+  };
+
+  public query func getCustomVoteResults(proposalId : Nat) : async [CustomVoteResult] {
+    computeCustomVoteResults(proposalId);
+  };
+
+  public shared func setCustomProposalAmount(password : Text, proposalId : Nat, amount : Text) : async Bool {
+    if (not isAdmin(password)) return false;
+    customProposals := customProposals.map(func(p : CustomProposal) : CustomProposal {
+      if (p.id == proposalId) {
+        { id = p.id; title = p.title; description = p.description; voteType = p.voteType;
+          options = p.options; openTime = p.openTime; closeTime = p.closeTime;
+          isFinalized = p.isFinalized; totalVoteAmount = amount };
+      } else { p };
+    });
+    true;
+  };
+
+  public shared func finalizeCustomProposal(password : Text, proposalId : Nat) : async Bool {
+    if (not isAdmin(password)) return false;
+    var foundProposal : ?CustomProposal = null;
+    customProposals := customProposals.map(func(p : CustomProposal) : CustomProposal {
+      if (p.id == proposalId) {
+        foundProposal := ?p;
+        { id = p.id; title = p.title; description = p.description; voteType = p.voteType;
+          options = p.options; openTime = p.openTime; closeTime = p.closeTime;
+          isFinalized = true; totalVoteAmount = p.totalVoteAmount };
+      } else { p };
+    });
+    switch (foundProposal) {
+      case (null) { false };
+      case (?p) {
+        let results = computeCustomVoteResults(proposalId);
+        if (results.size() == 0) return true;
+        var losingLabel = results[0].optionLabel;
+        var losingPct = results[0].totalWeightedPct;
+        for (r in results.vals()) {
+          if (r.totalWeightedPct < losingPct) {
+            losingPct := r.totalWeightedPct;
+            losingLabel := r.optionLabel;
+          };
+        };
+        let entry : CustomRewardsPoolEntry = {
+          proposalId = proposalId;
+          voteType = p.voteType;
+          losingOptionLabel = losingLabel;
+          losingOptionPct = losingPct;
+          poolAmount = p.totalVoteAmount;
+          distributed = false;
+        };
+        customRewardsPools := customRewardsPools.concat([entry]);
+        true;
+      };
+    };
+  };
+
+  public query func getCustomRewardsPools() : async [CustomRewardsPoolEntry] {
+    customRewardsPools;
+  };
+
+  public shared func markCustomRewardsDistributed(password : Text, proposalId : Nat) : async Bool {
+    if (not isAdmin(password)) return false;
+    customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+      if (r.proposalId == proposalId) {
+        { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel;
+          losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true };
+      } else { r };
+    });
+    true;
+  };
+
   //------------------------------ Community Chat ------------------------------
 
   public shared ({ caller }) func addChatMessage(voteId : Nat, author : Text, message : Text) : async ?ChatMessage {
@@ -557,4 +775,108 @@ actor {
   public query func getChatMessages(voteId : Nat) : async [ChatMessage] {
     voteMessages.filter(func(m : ChatMessage) : Bool { m.voteId == voteId });
   };
+  //------------------------------ Wallet Verification ------------------------------
+
+  type ICRC1Account = { owner : Principal; subaccount : ?Blob };
+  let bittyLedger = actor ("qroj6-lyaaa-aaaam-qeqta-cai") : actor {
+    icrc1_balance_of : (ICRC1Account) -> async Nat;
+  };
+
+  // externalWallet -> appPrincipalText
+  stable var verifiedWalletOwners : [(Text, Text)] = [];
+  // appPrincipalText -> [externalWallets]
+  stable var userVerifiedWallets : [(Text, [Text])] = [];
+  // (appPrincipalText, externalWallet, balanceBefore)
+  stable var pendingVerifications : [(Text, Text, Nat)] = [];
+
+  func getVerifiedWalletOwner(externalWallet : Text) : ?Text {
+    let found = verifiedWalletOwners.filter(func(e : (Text, Text)) : Bool { e.0 == externalWallet }).values().next();
+    switch (found) {
+      case (null) { null };
+      case (?(_, owner)) { ?owner };
+    };
+  };
+
+  func getUserWallets(appPrincipal : Text) : [Text] {
+    let found = userVerifiedWallets.filter(func(e : (Text, [Text])) : Bool { e.0 == appPrincipal }).values().next();
+    switch (found) {
+      case (null) { [] };
+      case (?(_, wallets)) { wallets };
+    };
+  };
+
+  func getPendingVerification(appPrincipal : Text, externalWallet : Text) : ?Nat {
+    let found = pendingVerifications.filter(func(e : (Text, Text, Nat)) : Bool {
+      e.0 == appPrincipal and e.1 == externalWallet
+    }).values().next();
+    switch (found) {
+      case (null) { null };
+      case (?(_, _, bal)) { ?bal };
+    };
+  };
+
+  public shared ({ caller }) func initWalletVerification(externalWallet : Text) : async { #ok : Nat; #err : Text } {
+    let callerText = caller.toText();
+    if (callerText == externalWallet) {
+      return #err("Cannot verify your own app principal as an external wallet");
+    };
+    switch (getVerifiedWalletOwner(externalWallet)) {
+      case (?_) { return #err("This wallet is already verified by another user") };
+      case (null) {};
+    };
+    let balance = await bittyLedger.icrc1_balance_of({ owner = caller; subaccount = null });
+    // Remove any existing pending for this caller+externalWallet
+    pendingVerifications := pendingVerifications.filter(func(e : (Text, Text, Nat)) : Bool {
+      not (e.0 == callerText and e.1 == externalWallet)
+    });
+    pendingVerifications := pendingVerifications.concat([(callerText, externalWallet, balance)]);
+    #ok(balance);
+  };
+
+  public shared ({ caller }) func confirmWalletVerification(externalWallet : Text) : async { #ok; #err : Text } {
+    let callerText = caller.toText();
+    switch (getPendingVerification(callerText, externalWallet)) {
+      case (null) { return #err("No pending verification found. Please start verification again.") };
+      case (?balanceBefore) {
+        let currentBalance = await bittyLedger.icrc1_balance_of({ owner = caller; subaccount = null });
+        if (currentBalance > balanceBefore) {
+          // Record ownership
+          verifiedWalletOwners := verifiedWalletOwners.filter(func(e : (Text, Text)) : Bool { e.0 != externalWallet });
+          verifiedWalletOwners := verifiedWalletOwners.concat([(externalWallet, callerText)]);
+          // Add to user's wallets
+          let existing = getUserWallets(callerText);
+          let alreadyHas = existing.any(func(w : Text) : Bool { w == externalWallet });
+          if (not alreadyHas) {
+            userVerifiedWallets := userVerifiedWallets.filter(func(e : (Text, [Text])) : Bool { e.0 != callerText });
+            userVerifiedWallets := userVerifiedWallets.concat([(callerText, existing.concat([externalWallet]))]);
+          };
+          // Remove pending
+          pendingVerifications := pendingVerifications.filter(func(e : (Text, Text, Nat)) : Bool {
+            not (e.0 == callerText and e.1 == externalWallet)
+          });
+          #ok;
+        } else {
+          #err("No new BITTYICP transfer detected. Send 10 BITTYICP from your external wallet to your app address, then try again.");
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getMyVerifiedWallets() : async [Text] {
+    getUserWallets(caller.toText());
+  };
+
+  public query func isExternalWalletClaimed(wallet : Text) : async Bool {
+    switch (getVerifiedWalletOwner(wallet)) {
+      case (null) { false };
+      case (?_) { true };
+    };
+  };
+
+  public query func getWalletOwner(wallet : Text) : async ?Text {
+    getVerifiedWalletOwner(wallet);
+  };
+
+
+
 };

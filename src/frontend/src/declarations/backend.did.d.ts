@@ -42,6 +42,35 @@ export interface Vote {
   'proposalId' : bigint,
   'voterPrincipal' : string,
 }
+
+export interface VoteType_ICP { 'ICP': null }
+export interface VoteType_BITTYICP { 'BITTYICP': null }
+export type VoteType = VoteType_ICP | VoteType_BITTYICP;
+
+export interface MonthlyVote {
+  id: bigint; voteType: VoteType; month: bigint; year: bigint;
+  openTime: bigint; closeTime: bigint; isFinalized: boolean; totalVoteAmount: string;
+}
+export interface VoteAllocation {
+  voteId: bigint; voterPrincipal: string; pctA: bigint; pctB: bigint; pctC: bigint; votingPower: bigint;
+}
+export interface VoteResult { optionLabel: string; totalWeightedPct: bigint; voterCount: bigint; }
+export interface RewardsPoolEntry {
+  voteId: bigint; voteType: VoteType; losingOptionLabel: string; losingOptionPct: bigint; poolAmount: string; distributed: boolean;
+}
+export interface CustomProposal {
+  id: bigint; title: string; description: string; voteType: VoteType; options: string[];
+  openTime: bigint; closeTime: bigint; isFinalized: boolean; totalVoteAmount: string;
+}
+export interface CustomOptionAlloc { optionIndex: bigint; pct: bigint; }
+export interface CustomVoteAllocation {
+  proposalId: bigint; voterPrincipal: string; allocations: CustomOptionAlloc[]; votingPower: bigint;
+}
+export interface CustomVoteResult { optionLabel: string; optionIndex: bigint; totalWeightedPct: bigint; voterCount: bigint; }
+export interface CustomRewardsPoolEntry {
+  proposalId: bigint; voteType: VoteType; losingOptionLabel: string; losingOptionPct: bigint; poolAmount: string; distributed: boolean;
+}
+
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addAnnouncement' : ActorMethod<
@@ -81,6 +110,34 @@ export interface _SERVICE {
   'setManualBittyPrice' : ActorMethod<[string, string], boolean>,
   'setManualFundBalance' : ActorMethod<[string, string], boolean>,
   'updateAnnouncement' : ActorMethod<[string, bigint, string, string], boolean>,
+  getActiveVotes: ActorMethod<[], MonthlyVote[]>;
+  getAllVotes: ActorMethod<[], MonthlyVote[]>;
+  castSplitVote: ActorMethod<[bigint, string, bigint, bigint, bigint, bigint], boolean>;
+  hasVotedOnVote: ActorMethod<[bigint, string], boolean>;
+  getVoteAllocations: ActorMethod<[bigint], VoteAllocation[]>;
+  getVoteResults: ActorMethod<[bigint], VoteResult[]>;
+  setVoteAmount: ActorMethod<[string, bigint, string], boolean>;
+  finalizeVote: ActorMethod<[string, bigint], boolean>;
+  markRewardsDistributed: ActorMethod<[string, bigint], boolean>;
+  getRewardsPools: ActorMethod<[], RewardsPoolEntry[]>;
+  setNeuronTopupAddress: ActorMethod<[string, string], boolean>;
+  setGamesWallet: ActorMethod<[string, string], boolean>;
+  getAdminConfig: ActorMethod<[], { neuronTopupAddress: string; gamesWallet: string }>;
+  createCustomProposal: ActorMethod<[string, string, string, VoteType, string[], bigint], [] | [CustomProposal]>;
+  getCustomProposals: ActorMethod<[], CustomProposal[]>;
+  castCustomVote: ActorMethod<[bigint, string, CustomOptionAlloc[], bigint], boolean>;
+  hasVotedOnCustomProposal: ActorMethod<[bigint, string], boolean>;
+  getCustomVoteAllocations: ActorMethod<[bigint], CustomVoteAllocation[]>;
+  getCustomVoteResults: ActorMethod<[bigint], CustomVoteResult[]>;
+  setCustomProposalAmount: ActorMethod<[string, bigint, string], boolean>;
+  finalizeCustomProposal: ActorMethod<[string, bigint], boolean>;
+  getCustomRewardsPools: ActorMethod<[], CustomRewardsPoolEntry[]>;
+  markCustomRewardsDistributed: ActorMethod<[string, bigint], boolean>;
+  initWalletVerification: ActorMethod<[string], { ok: bigint } | { err: string }>;
+  confirmWalletVerification: ActorMethod<[string], { ok: null } | { err: string }>;
+  getMyVerifiedWallets: ActorMethod<[], string[]>;
+  isExternalWalletClaimed: ActorMethod<[string], boolean>;
+  getWalletOwner: ActorMethod<[string], [] | [string]>;
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
