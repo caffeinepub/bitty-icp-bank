@@ -3104,9 +3104,9 @@ export default function VotingPage({
         >
           <div className="flex items-center justify-center gap-3 mb-2">
             <img
-              src="/assets/generated/bittyicp-coin-logo-transparent.dim_200x200.png"
+              src="/assets/uploads/img_4570-019d364f-b05b-7469-b9d0-e8428c9ccfeb-1.jpeg"
               alt="BITTYICP coin"
-              className="w-10 h-10 rounded-full object-cover coin-spin"
+              className="w-20 h-20 rounded-full object-cover coin-spin"
             />
             <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">
               BITTYICP GOVERNANCE
