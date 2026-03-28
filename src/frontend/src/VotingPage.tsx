@@ -167,11 +167,12 @@ interface VerifiedWallet {
 
 function MyWalletPanel({
   principal,
-  actor,
+  actor: _actorProp,
 }: {
   principal: string;
   actor: any;
 }) {
+  const { actor, isFetching: actorLoading } = useActor();
   const [verifiedWallets, setVerifiedWallets] = useState<VerifiedWallet[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
@@ -251,7 +252,11 @@ function MyWalletPanel({
   }
 
   async function startVerification() {
-    if (!externalInput.trim() || !actor) return;
+    if (!externalInput.trim()) return;
+    if (!actor) {
+      toast.error("Still connecting to network, please try again in a moment.");
+      return;
+    }
     setVerifyLoading(true);
     try {
       const res = await (actor as any).initWalletVerification(
@@ -550,7 +555,7 @@ function MyWalletPanel({
                     className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
                     data-ocid="wallet.input"
                   />
-                  {!actor && (
+                  {actorLoading && !actor && (
                     <p className="text-xs text-yellow-500 text-center">
                       Connecting to network... please wait a moment
                     </p>
@@ -559,7 +564,11 @@ function MyWalletPanel({
                     size="sm"
                     data-ocid="wallet.submit_button"
                     onClick={startVerification}
-                    disabled={verifyLoading || !externalInput.trim() || !actor}
+                    disabled={
+                      verifyLoading ||
+                      !externalInput.trim() ||
+                      (actorLoading && !actor)
+                    }
                     className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
                   >
                     {verifyLoading ? (
