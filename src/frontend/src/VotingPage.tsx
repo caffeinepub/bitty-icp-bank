@@ -15,6 +15,7 @@ import {
 import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
 import {
   ArrowLeft,
+  ArrowUpRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -172,14 +173,12 @@ function MyWalletPanel({
   principal: string;
   actor: any;
 }) {
-  const { actor, isFetching: actorLoading } = useActor();
+  const { actor } = useActor();
+  const { identity } = useInternetIdentity();
   const [verifiedWallets, setVerifiedWallets] = useState<VerifiedWallet[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [externalInput, setExternalInput] = useState("");
-  const [verifyStep, setVerifyStep] = useState<"idle" | "pending" | "confirm">(
-    "idle",
-  );
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [sendDest, setSendDest] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -201,7 +200,6 @@ function MyWalletPanel({
         loading: true,
       }));
       setVerifiedWallets(items);
-      // Load balances in parallel
       wallets.forEach(async (w, i) => {
         try {
           const raw = await getBITTYBalance(w);
@@ -251,57 +249,30 @@ function MyWalletPanel({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function startVerification() {
+  async function handleVerify() {
     if (!externalInput.trim()) return;
-    if (!actor) {
-      toast.error("Still connecting to network, please try again in a moment.");
-      return;
-    }
     setVerifyLoading(true);
     try {
-      const res = await (actor as any).initWalletVerification(
-        externalInput.trim(),
-      );
-      if ("err" in res) {
-        if (
-          res.err.includes("already claimed") ||
-          res.err.includes("already verified")
-        ) {
-          toast.error("This wallet is already verified by another user.");
-        } else {
-          toast.error(res.err);
-        }
-        return;
+      let activeActor = actor;
+      if (!activeActor) {
+        const { createActorWithConfig } = await import("./config");
+        activeActor = await createActorWithConfig({
+          agentOptions: { identity },
+        });
       }
-      setVerifyStep("confirm");
-      toast.success(
-        "Verification started! Now send 10 BITTYICP from your external wallet.",
-      );
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to start verification");
-    } finally {
-      setVerifyLoading(false);
-    }
-  }
-
-  async function confirmVerification() {
-    if (!externalInput.trim() || !actor) return;
-    setVerifyLoading(true);
-    try {
-      const res = await (actor as any).confirmWalletVerification(
+      const res = await (activeActor as any).verifyExternalWallet(
         externalInput.trim(),
       );
       if ("err" in res) {
         toast.error(res.err);
         return;
       }
-      toast.success("Wallet verified successfully!");
-      setVerifyStep("idle");
+      toast.success("Wallet verified successfully! Voting power updated.");
       setExternalInput("");
       setShowAddWallet(false);
       await loadVerifiedWallets();
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed to confirm verification");
+      toast.error(e?.message ?? "Verification failed. Please try again.");
     } finally {
       setVerifyLoading(false);
     }
@@ -329,6 +300,13 @@ function MyWalletPanel({
     }
   }
 
+  const totalVerifiedPower = verifiedWallets.reduce(
+    (sum, w) => sum + Math.floor(w.balance / 1000),
+    0,
+  );
+  const ownPower = Math.floor(walletBittyBalance / 1000);
+  const totalVotingPower = ownPower + totalVerifiedPower;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -348,7 +326,7 @@ function MyWalletPanel({
         {/* Receive Address */}
         <div>
           <p className="text-xs text-gray-400 mb-1 uppercase tracking-wider">
-            Your App Address (Receive)
+            Your BITTY ICP Bank Address (Receive)
           </p>
           <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
             <span
@@ -408,26 +386,40 @@ function MyWalletPanel({
           </div>
         </div>
 
-        {/* Send */}
+        {/* Voting Power Summary */}
+        <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
+          <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">
+            Total Voting Power
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl font-black text-yellow-400">
+              {totalVotingPower}
+            </span>
+            <span className="text-xs text-gray-400">votes</span>
+          </div>
+          {totalVerifiedPower > 0 && (
+            <p className="text-xs text-green-400 mt-1">
+              +{totalVerifiedPower} from {verifiedWallets.length} verified
+              wallet(s)
+            </p>
+          )}
+        </div>
+
+        {/* Send Panel */}
         <div>
           <button
             type="button"
             data-ocid="wallet.toggle"
             onClick={() => setShowSend(!showSend)}
-            className="flex items-center gap-2 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
-            <Send className="w-3 h-3" />
-            {showSend ? "Hide" : "Send BITTYICP"}
-            {showSend ? (
-              <ChevronUp className="w-3 h-3" />
-            ) : (
-              <ChevronDown className="w-3 h-3" />
-            )}
+            <ArrowUpRight className="w-3 h-3" />
+            Send BITTYICP
           </button>
           {showSend && (
-            <div className="mt-2 space-y-2 p-3 bg-black/30 rounded-xl border border-white/10">
+            <div className="mt-2 space-y-2">
               <Input
-                placeholder="Destination principal"
+                placeholder="Destination address"
                 value={sendDest}
                 onChange={(e) => setSendDest(e.target.value)}
                 className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
@@ -437,27 +429,19 @@ function MyWalletPanel({
                 placeholder="Amount (BITTYICP)"
                 value={sendAmount}
                 onChange={(e) => setSendAmount(e.target.value)}
-                type="number"
-                min="0"
                 className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
-                data-ocid="wallet.send_input"
+                data-ocid="wallet.input"
               />
-              <p className="text-xs text-amber-400/70">
-                ⚠ Direct send requires Plug wallet connection. For NNS/Oisy, use
-                those apps to send BITTYICP to any address.
-              </p>
               <Button
                 size="sm"
-                data-ocid="wallet.primary_button"
+                data-ocid="wallet.submit_button"
                 onClick={handleSend}
                 disabled={sendLoading}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
+                className="w-full bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold"
               >
                 {sendLoading ? (
                   <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                ) : (
-                  <Send className="w-3 h-3 mr-1" />
-                )}
+                ) : null}
                 Send
               </Button>
             </div>
@@ -471,7 +455,7 @@ function MyWalletPanel({
               Verified External Wallets
             </p>
             {walletsLoading && (
-              <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+              <Loader2 className="w-3 h-3 animate-spin text-yellow-500" />
             )}
           </div>
 
@@ -481,38 +465,48 @@ function MyWalletPanel({
             </p>
           )}
 
-          <div className="space-y-2">
-            {verifiedWallets.map((w, i) => (
-              <div
-                key={w.principal}
-                data-ocid={`wallet.item.${i + 1}`}
-                className="flex items-center justify-between bg-black/30 rounded-xl border border-green-600/20 px-3 py-2"
-              >
-                <div>
-                  <p
-                    className="text-xs font-mono text-green-400 truncate max-w-[180px]"
-                    title={w.principal}
-                  >
-                    {w.principal.slice(0, 20)}…
+          {verifiedWallets.map((w, i) => (
+            <div
+              key={w.principal}
+              data-ocid={`wallet.item.${i + 1}`}
+              className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2 mb-1 border border-yellow-600/10"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="font-mono text-xs text-yellow-300 truncate">
+                  {w.principal}
+                </p>
+                {w.loading ? (
+                  <p className="text-xs text-gray-500">Loading balance…</p>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    {w.balance.toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    BITTYICP ·{" "}
+                    <span className="text-yellow-500">
+                      {Math.floor(w.balance / 1000)} votes
+                    </span>
                   </p>
-                  {w.loading ? (
-                    <p className="text-xs text-gray-500">Loading…</p>
-                  ) : (
-                    <p className="text-xs text-gray-400">
-                      {w.balance.toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })}{" "}
-                      BITTYICP · {Math.floor(w.balance / 1000)} vote
-                      {Math.floor(w.balance / 1000) !== 1 ? "s" : ""}
-                    </p>
-                  )}
-                </div>
-                <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs">
-                  Verified
-                </Badge>
+                )}
               </div>
-            ))}
-          </div>
+              <button
+                type="button"
+                data-ocid={`wallet.delete_button.${i + 1}`}
+                onClick={() => {
+                  setVerifiedWallets((prev) =>
+                    prev.filter((_, vi) => vi !== i),
+                  );
+                  toast.success(
+                    "Wallet removed from display. Contact admin to permanently unlink.",
+                  );
+                }}
+                className="ml-2 text-gray-600 hover:text-red-400 transition-colors"
+                title="Remove wallet"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
 
           {/* Add External Wallet */}
           {!showAddWallet ? (
@@ -529,15 +523,12 @@ function MyWalletPanel({
             <div className="mt-3 space-y-3 p-3 bg-black/30 rounded-xl border border-yellow-600/20">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-yellow-300">
-                  {verifyStep === "idle"
-                    ? "Step 1: Enter External Wallet"
-                    : "Step 2: Send 10 BITTYICP"}
+                  Verify External Wallet
                 </p>
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddWallet(false);
-                    setVerifyStep("idle");
                     setExternalInput("");
                   }}
                   className="text-gray-500 hover:text-white"
@@ -546,92 +537,73 @@ function MyWalletPanel({
                 </button>
               </div>
 
-              {verifyStep === "idle" && (
-                <>
-                  <Input
-                    placeholder="Your external wallet principal (e.g. Oisy address)"
-                    value={externalInput}
-                    onChange={(e) => setExternalInput(e.target.value)}
-                    className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
-                    data-ocid="wallet.input"
-                  />
-                  {actorLoading && !actor && (
-                    <p className="text-xs text-yellow-500 text-center">
-                      Connecting to network... please wait a moment
-                    </p>
-                  )}
-                  <Button
-                    size="sm"
-                    data-ocid="wallet.submit_button"
-                    onClick={startVerification}
-                    disabled={
-                      verifyLoading ||
-                      !externalInput.trim() ||
-                      (actorLoading && !actor)
-                    }
-                    className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
-                  >
-                    {verifyLoading ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                    ) : null}
-                    Start Verification
-                  </Button>
-                </>
-              )}
+              {/* Instructions */}
+              <div className="rounded-lg bg-yellow-900/20 border border-yellow-600/20 p-3 space-y-2">
+                <p className="text-xs text-yellow-200 font-semibold">
+                  How to verify:
+                </p>
+                <ol className="text-xs text-gray-300 space-y-1 list-decimal list-inside">
+                  <li>Copy your BITTY ICP Bank address below</li>
+                  <li>
+                    Send at least{" "}
+                    <span className="text-yellow-400 font-bold">
+                      10 $BITTYICP
+                    </span>{" "}
+                    from your external wallet to that address
+                  </li>
+                  <li>
+                    Paste your external wallet address below and click{" "}
+                    <span className="text-yellow-400 font-bold">VERIFY</span>
+                  </li>
+                </ol>
+              </div>
 
-              {verifyStep === "confirm" && (
-                <>
-                  <div className="text-xs text-gray-300 space-y-1">
-                    <p>
-                      Open your wallet{" "}
-                      <span className="font-mono text-yellow-300">
-                        {externalInput.slice(0, 16)}…
-                      </span>{" "}
-                      and send:
-                    </p>
-                    <p className="text-lg font-bold text-yellow-400 text-center py-1">
-                      10 BITTYICP
-                    </p>
-                    <p className="text-gray-400">To your app address:</p>
-                    <div className="flex items-center gap-2 bg-black/40 rounded-lg px-2 py-1.5">
-                      <span className="font-mono text-yellow-300 text-xs flex-1 truncate">
-                        {principal}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(principal);
-                          toast.success("Copied!");
-                        }}
-                        className="text-gray-500 hover:text-yellow-400"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    data-ocid="wallet.confirm_button"
-                    onClick={confirmVerification}
-                    disabled={verifyLoading}
-                    className="w-full bg-green-600 hover:bg-green-500 text-white text-xs font-bold"
-                  >
-                    {verifyLoading ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                    ) : (
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                    )}
-                    I've Sent It — Verify
-                  </Button>
+              {/* Their app address for sending to */}
+              <div>
+                <p className="text-xs text-gray-400 mb-1">
+                  Your BITTY ICP Bank Address:
+                </p>
+                <div className="flex items-center gap-2 bg-black/40 rounded-lg border border-yellow-500/20 px-2 py-1.5">
+                  <span className="font-mono text-yellow-300 text-xs flex-1 truncate">
+                    {principal}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setVerifyStep("idle")}
-                    className="w-full text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    onClick={() => {
+                      navigator.clipboard.writeText(principal);
+                      toast.success("Address copied!");
+                    }}
+                    className="text-gray-500 hover:text-yellow-400"
                   >
-                    ← Back
+                    <Copy className="w-3 h-3" />
                   </button>
-                </>
-              )}
+                </div>
+              </div>
+
+              {/* Input + Verify */}
+              <Input
+                placeholder="Paste external wallet address (e.g. your Oisy address)"
+                value={externalInput}
+                onChange={(e) => setExternalInput(e.target.value)}
+                className="bg-black/50 border-yellow-600/30 text-white placeholder:text-gray-600 text-xs"
+                data-ocid="wallet.input"
+              />
+              <Button
+                size="sm"
+                data-ocid="wallet.confirm_button"
+                onClick={handleVerify}
+                disabled={!externalInput.trim() || verifyLoading}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold"
+              >
+                {verifyLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : null}
+                VERIFY
+              </Button>
+              <p className="text-xs text-gray-500 text-center">
+                Once verified, this wallet is permanently linked to your
+                account.
+              </p>
             </div>
           )}
         </div>

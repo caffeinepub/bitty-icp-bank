@@ -877,6 +877,31 @@ actor {
     getVerifiedWalletOwner(wallet);
   };
 
+  public shared ({ caller }) func verifyExternalWallet(externalWallet : Text) : async { #ok; #err : Text } {
+    let callerText = caller.toText();
+    if (callerText == externalWallet) {
+      return #err("Cannot verify your own app principal as an external wallet");
+    };
+    switch (getVerifiedWalletOwner(externalWallet)) {
+      case (?_) { return #err("This wallet is already verified by another user") };
+      case (null) {};
+    };
+    let balance = await bittyLedger.icrc1_balance_of({ owner = caller; subaccount = null });
+    if (balance == 0) {
+      return #err("No BITTYICP received yet. Please send 10 $BITTYICP from your external wallet to your BITTY ICP Bank address first.");
+    };
+    verifiedWalletOwners := verifiedWalletOwners.filter(func(e : (Text, Text)) : Bool { e.0 != externalWallet });
+    verifiedWalletOwners := verifiedWalletOwners.concat([(externalWallet, callerText)]);
+    let existing = getUserWallets(callerText);
+    let alreadyHas = existing.any(func(w : Text) : Bool { w == externalWallet });
+    if (not alreadyHas) {
+      userVerifiedWallets := userVerifiedWallets.filter(func(e : (Text, [Text])) : Bool { e.0 != callerText });
+      userVerifiedWallets := userVerifiedWallets.concat([(callerText, existing.concat([externalWallet]))]);
+    };
+    #ok;
+  };
+
+
 
 
 };

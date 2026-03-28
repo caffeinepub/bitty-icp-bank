@@ -211,6 +211,7 @@ export const idlService = IDL.Service({
   'getMyVerifiedWallets': IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
   'isExternalWalletClaimed': IDL.Func([IDL.Text], [IDL.Bool], ['query']),
   'getWalletOwner': IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+    'verifyExternalWallet': IDL.Func([IDL.Text], [IDL.Variant({'ok': IDL.Null, 'err': IDL.Text})], []),
 });
 
 export const idlInitArgs = [];
@@ -412,6 +413,7 @@ export const idlFactory = ({ IDL }) => {
     'getMyVerifiedWallets': IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'isExternalWalletClaimed': IDL.Func([IDL.Text], [IDL.Bool], ['query']),
     'getWalletOwner': IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+    'verifyExternalWallet': IDL.Func([IDL.Text], [IDL.Variant({'ok': IDL.Null, 'err': IDL.Text})], []),
   });
 };
 

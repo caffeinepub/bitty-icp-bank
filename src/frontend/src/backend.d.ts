@@ -90,5 +90,11 @@ export interface backendInterface {
     setManualFundBalance(password: string, fund: string): Promise<boolean>;
     setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
     setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    verifyExternalWallet(externalWallet: string): Promise<{ ok: null } | { err: string }>;
+    initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }>;
+    confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }>;
+    getMyVerifiedWallets(): Promise<string[]>;
+    isExternalWalletClaimed(wallet: string): Promise<boolean>;
+    getWalletOwner(wallet: string): Promise<string | null>;
     updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
 }
