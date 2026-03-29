@@ -1080,6 +1080,10 @@ export default function App() {
   const gamesBittyRaw = gamesBalances.data?.bitty ?? null;
   const gamesBittyNum =
     gamesBittyRaw !== null ? Number(gamesBittyRaw) / 1e8 : null;
+  const gamesIcpRaw = gamesBalances.data?.icp ?? null;
+  const gamesIcpNum = gamesIcpRaw !== null ? Number(gamesIcpRaw) / 1e8 : null;
+  const gamesIcpUsd =
+    gamesIcpNum !== null && icpUsd !== null ? gamesIcpNum * icpUsd : null;
   const gamesUsdValue =
     gamesBittyNum !== null && bittyUsd !== null
       ? gamesBittyNum * bittyUsd
@@ -1516,6 +1520,11 @@ export default function App() {
                             </span>
                           )}
                         </div>
+                        {gamesIcpUsd !== null && (
+                          <div className="text-sm text-muted-foreground mt-0.5">
+                            {formatUsd(gamesIcpUsd)} USD
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
@@ -1530,6 +1539,11 @@ export default function App() {
                             </span>
                           )}
                         </div>
+                        {gamesUsdValue !== null && (
+                          <div className="text-sm text-muted-foreground mt-0.5">
+                            {formatUsd(gamesUsdValue)} USD
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
