@@ -2545,7 +2545,7 @@ function CreateProposalForm({
   const [options, setOptions] = useState(["", ""]);
   const [endDateTime, setEndDateTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { actor: localActor } = useActor();
+  const { actor: localActor, isFetching: actorLoading } = useActor();
   const activeActor = localActor || actor;
 
   function addOption() {
@@ -2743,10 +2743,15 @@ function CreateProposalForm({
               <Button
                 data-ocid="proposal.submit_button"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || actorLoading}
                 className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold"
               >
-                {submitting ? (
+                {actorLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />{" "}
+                    Connecting…
+                  </>
+                ) : submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin mr-2" /> Creating…
                   </>
@@ -3558,8 +3563,15 @@ export default function VotingPage({
         {!isSignedIn && <HowItWorksSection />}
 
         {/* Footer */}
-        <div className="text-center text-xs text-gray-600 pb-4">
-          BITTYONICP.COM
+        <div className="text-center pb-4">
+          <a
+            href="https://bittyonicp.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-yellow-400 font-bold text-lg hover:text-yellow-300 transition-colors"
+          >
+            BITTYONICP.COM
+          </a>
         </div>
       </div>
 
