@@ -1210,45 +1210,6 @@ export default function App() {
               </span>
             )}
           </motion.div>
-
-          {/* Total ICP Treasury Value Banner */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.08 }}
-            className="glass-card-gold gold-glow rounded-2xl p-6"
-            data-ocid="total_icp.card"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Total ICP Treasury Value
-                </p>
-                <p className="text-xs text-muted-foreground/60">
-                  ICP Treasury + NNS Neuron Stake
-                </p>
-              </div>
-              <div className="text-right">
-                {totalIcpLoading ? (
-                  <div className="flex items-center gap-2 justify-end">
-                    <Loader2 className="h-5 w-5 animate-spin text-gold/60" />
-                    <span className="text-2xl font-heading font-bold text-gold/40">
-                      —
-                    </span>
-                  </div>
-                ) : totalIcpUsd !== null ? (
-                  <span className="text-3xl font-heading font-bold text-gold tabular-nums">
-                    {formatUsd(totalIcpUsd)}
-                  </span>
-                ) : (
-                  <span className="text-2xl font-heading font-bold text-gold/40">
-                    —
-                  </span>
-                )}
-              </div>
-            </div>
-          </motion.div>
-
           {/* Balance Section */}
           <section>
             <div className="flex items-center justify-between mb-5">
@@ -1349,7 +1310,7 @@ export default function App() {
                     </Badge>
                   ) : neuronUsdValue !== null ? (
                     <span className="text-xs font-semibold text-gold/80">
-                      {formatUsd(neuronUsdValue)}
+                      {formatUsd(neuronUsdValue)} USD
                     </span>
                   ) : neuronStake.data !== null &&
                     neuronStake.data !== undefined ? (
@@ -1428,7 +1389,7 @@ export default function App() {
                       </Badge>
                     ) : fundUsdValue !== null ? (
                       <span className="text-xs font-semibold text-gold/80">
-                        {formatUsd(fundUsdValue)}
+                        {formatUsd(fundUsdValue)} USD
                       </span>
                     ) : fundHasManual || fundHasLive ? (
                       <Badge
