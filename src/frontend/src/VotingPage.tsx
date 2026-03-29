@@ -12,7 +12,14 @@ import {
   useGetVoteAllocations,
   useMarkRewardsDistributed,
 } from "@/hooks/useQueries";
-import { getBITTYBalance, getICPBalance } from "@/utils/ledgerActors";
+import {
+  BITTY_LEDGER_ID_EXPORT,
+  getBITTYBalance,
+  getICPBalance,
+  icrc1IdlFactory,
+  sendBITTY,
+  sendICP,
+} from "@/utils/ledgerActors";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -60,6 +67,15 @@ declare global {
         agent?: { getPrincipal: () => Promise<{ toString: () => string }> };
         isConnected: () => Promise<boolean>;
         disconnect: () => Promise<void>;
+        requestTransfer: (params: {
+          to: string;
+          amount: number;
+          opts?: { fee?: number };
+        }) => Promise<{ height: number }>;
+        createActor: (params: {
+          canisterId: string;
+          interfaceFactory: any;
+        }) => Promise<any>;
       };
     };
   }
@@ -188,9 +204,11 @@ interface VerifiedWallet {
 function MyWalletPanel({
   principal,
   actor: _actorProp,
+  isPlugUser = false,
 }: {
   principal: string;
   actor: any;
+  isPlugUser?: boolean;
 }) {
   const { actor } = useActor();
   const { identity } = useInternetIdentity();
@@ -310,9 +328,44 @@ function MyWalletPanel({
     }
     setSendLoading(true);
     try {
-      toast.error(
-        "To send BITTYICP, use NNS, Oisy, or ICRC-1 compatible wallet. Direct transfers from this panel require the Plug wallet.",
-      );
+      const amountE8s = BigInt(Math.round(amt * 1e8));
+      if (isPlugUser) {
+        // Plug: use createActor with the BITTYICP ledger
+        if (!window.ic?.plug) throw new Error("Plug wallet not available");
+        const actor = await window.ic.plug.createActor({
+          canisterId: BITTY_LEDGER_ID_EXPORT,
+          interfaceFactory: icrc1IdlFactory,
+        });
+        const { Principal } = await import("@dfinity/principal");
+        const result = await actor.icrc1_transfer({
+          from_subaccount: [],
+          to: { owner: Principal.fromText(sendDest.trim()), subaccount: [] },
+          amount: amountE8s,
+          fee: [BigInt(10_000)],
+          memo: [],
+          created_at_time: [],
+        });
+        if ("Ok" in result) {
+          toast.success(`Sent ${amt} $BITTYICP successfully!`);
+          setSendDest("");
+          setSendAmount("");
+          setShowSend(false);
+        } else {
+          const errKey = Object.keys(result.Err)[0];
+          toast.error(`Transfer failed: ${errKey}`);
+        }
+      } else {
+        if (!identity) throw new Error("Not signed in with Internet Identity");
+        const result = await sendBITTY(identity, sendDest.trim(), amountE8s);
+        if ("ok" in result) {
+          toast.success(`Sent ${amt} $BITTYICP successfully!`);
+          setSendDest("");
+          setSendAmount("");
+          setShowSend(false);
+        } else {
+          toast.error(`Transfer failed: ${result.err}`);
+        }
+      }
     } catch (e: any) {
       toast.error(e?.message ?? "Send failed");
     } finally {
@@ -332,9 +385,31 @@ function MyWalletPanel({
     }
     setSendLoading(true);
     try {
-      toast.error(
-        "To send ICP, use NNS, Oisy, or any ICP-compatible wallet. Direct transfers from this panel require the Plug wallet.",
-      );
+      const amountE8s = BigInt(Math.round(amt * 1e8));
+      if (isPlugUser) {
+        // Plug: use requestTransfer for ICP
+        if (!window.ic?.plug) throw new Error("Plug wallet not available");
+        await window.ic.plug.requestTransfer({
+          to: sendDest.trim(),
+          amount: Number(amountE8s),
+          opts: { fee: 10_000 },
+        });
+        toast.success(`Sent ${amt} ICP successfully!`);
+        setSendDest("");
+        setSendAmount("");
+        setShowSend(false);
+      } else {
+        if (!identity) throw new Error("Not signed in with Internet Identity");
+        const result = await sendICP(identity, sendDest.trim(), amountE8s);
+        if ("ok" in result) {
+          toast.success(`Sent ${amt} ICP successfully!`);
+          setSendDest("");
+          setSendAmount("");
+          setShowSend(false);
+        } else {
+          toast.error(`Transfer failed: ${result.err}`);
+        }
+      }
     } catch (e: any) {
       toast.error(e?.message ?? "Send failed");
     } finally {
@@ -3357,7 +3432,11 @@ export default function VotingPage({
 
         {/* My Wallet Panel */}
         {isSignedIn && principal && (
-          <MyWalletPanel principal={principal} actor={actor} />
+          <MyWalletPanel
+            principal={principal}
+            actor={actor}
+            isPlugUser={!!plugPrincipal}
+          />
         )}
 
         {/* Vote Cards */}
