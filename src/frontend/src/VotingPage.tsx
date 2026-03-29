@@ -30,6 +30,7 @@ import {
   MessageSquare,
   Plus,
   Send,
+  Share2,
   ShieldCheck,
   Trash2,
   Trophy,
@@ -42,6 +43,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import type { MonthlyVote, RewardsPoolEntry, VoteResult } from "./backend.d";
 import { loadConfig } from "./config";
+// ─── Share on X helper ────────────────────────────────────────────────────────
+function shareOnX(title: string, status: string) {
+  const text = `🗳️ BITTY ON ICP Governance Vote: "${title}" is ${status}!\n\nCast your vote at bittyicpbank.com\n#BITTYICP #ICP #InternetComputer`;
+  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1391,6 +1398,24 @@ function VoteCard({
           </div>
         )}
 
+        {/* Share */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              shareOnX(
+                isICP ? "$ICP Treasury Vote" : "$BITTYICP Treasury Vote",
+                status.label,
+              )
+            }
+            className="border-yellow-600/40 text-yellow-400 hover:bg-yellow-500/10 text-xs gap-1.5"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            Share on X
+          </Button>
+        </div>
+
         {/* Chat */}
         <ChatSection voteId={vote.id} principal={principal} actor={actor} />
       </div>
@@ -2560,6 +2585,19 @@ function CustomProposalCard({
             )}
           </div>
         )}
+
+        {/* Share */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => shareOnX(proposal.title, statusLabel)}
+            className="border-yellow-600/40 text-yellow-400 hover:bg-yellow-500/10 text-xs gap-1.5"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            Share on X
+          </Button>
+        </div>
 
         {/* Chat */}
         <ChatSection voteId={proposal.id} principal={principal} actor={actor} />
