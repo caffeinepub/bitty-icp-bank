@@ -2585,7 +2585,7 @@ function CreateProposalForm({
         options.map((o) => o.trim()),
         closeTimeNs,
       );
-      if (Array.isArray(result) && result.length > 0) {
+      if (result !== null && result !== undefined) {
         toast.success("Proposal created successfully!");
         setTitle("");
         setDescription("");
@@ -3111,7 +3111,7 @@ export default function VotingPage({
         >
           <div className="flex items-center justify-center gap-3 mb-2">
             <img
-              src="/assets/uploads/img_4570-019d364f-b05b-7469-b9d0-e8428c9ccfeb-1.jpeg"
+              src="/assets/img_4570-019d364f-b05b-7469-b9d0-e8428c9ccfeb.jpeg"
               alt="BITTYICP coin"
               className="w-24 h-24 rounded-full object-cover coin-spin"
             />
