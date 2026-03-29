@@ -53,10 +53,6 @@ import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import VotingPage from "./VotingPage";
 
-const TREASURY_WALLET =
-  "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
-const FUND_WALLET =
-  "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
 const NEURON_ID = "2927437143767212939";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -166,7 +162,6 @@ function BalanceCard({
   const showingManual = hasManual;
   const cardClass = "glass-card-gold gold-glow";
   const amountClass = "text-gold";
-  const borderClass = "border-[oklch(0.87_0.17_90/0.4)]";
 
   const balanceNum = resolveBalanceNumber(manualValue, liveValue);
   const usdValue =
@@ -179,50 +174,43 @@ function BalanceCard({
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-3 min-w-0 flex-1`}
+      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-2 min-w-0 flex-1`}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-          {token}
-        </span>
-        {isLoading ? (
-          <Badge variant="outline" className={`text-xs ${borderClass}`}>
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
-          </Badge>
-        ) : showingManual && isAdmin ? (
-          <Badge
-            variant="outline"
-            className="text-xs border-yellow-500/40 text-yellow-400"
-          >
-            <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
-          </Badge>
-        ) : usdValue !== null ? (
-          <span className="text-xs font-semibold text-gold/80">
-            {formatUsd(usdValue)} USD
-          </span>
-        ) : showingManual || hasLive ? (
-          <Badge
-            variant="outline"
-            className={`text-xs ${borderClass} ${amountClass}`}
-          >
-            <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-          </Badge>
-        ) : null}
+      <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
+        {token}
       </div>
-      <div
-        className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
-      >
-        {isLoading ? (
-          <span className="opacity-40">—</span>
-        ) : hasManual ? (
-          manualValue
-        ) : hasLive ? (
-          formatBalance(liveValue!)
-        ) : (
-          <span className="opacity-40">0</span>
-        )}
-      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground py-1">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Loading...</span>
+        </div>
+      ) : (
+        <div
+          className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
+        >
+          {hasManual ? (
+            manualValue
+          ) : hasLive ? (
+            formatBalance(liveValue!)
+          ) : (
+            <span className="opacity-40">0</span>
+          )}
+        </div>
+      )}
       <div className="text-xs text-muted-foreground font-mono">{symbol}</div>
+      {!isLoading && usdValue !== null && (
+        <div className="text-sm text-muted-foreground mt-0.5">
+          {formatUsd(usdValue)} USD
+        </div>
+      )}
+      {!isLoading && usdValue === null && showingManual && isAdmin && (
+        <Badge
+          variant="outline"
+          className="text-xs border-yellow-500/40 text-yellow-400 self-start"
+        >
+          <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
+        </Badge>
+      )}
     </motion.div>
   );
 }
@@ -1315,19 +1303,6 @@ export default function App() {
                 usdPrice={bittyUsd}
               />
             </div>
-
-            {/* Copyable IDs */}
-            <div className="mt-5 glass-card rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
-                Treasury IDs
-              </p>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">
-                  Wallet Address
-                </p>
-                <CopyableId value={TREASURY_WALLET} label="Wallet Address" />
-              </div>
-            </div>
           </section>
 
           {/* NNS Public Neuron Section */}
@@ -1359,31 +1334,9 @@ export default function App() {
 
               {/* ICP Stake */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-                    ICP Staked
-                  </p>
-                  {neuronStake.isLoading ? (
-                    <Badge
-                      variant="outline"
-                      className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
-                    >
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
-                    </Badge>
-                  ) : neuronUsdValue !== null ? (
-                    <span className="text-xs font-semibold text-gold/80">
-                      {formatUsd(neuronUsdValue)} USD
-                    </span>
-                  ) : neuronStake.data !== null &&
-                    neuronStake.data !== undefined ? (
-                    <Badge
-                      variant="outline"
-                      className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
-                    >
-                      <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-                    </Badge>
-                  ) : null}
-                </div>
+                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                  ICP Staked
+                </p>
                 <div className="text-3xl font-heading font-bold text-gold tabular-nums">
                   {neuronStake.isLoading ? (
                     <span className="opacity-40">—</span>
@@ -1397,8 +1350,14 @@ export default function App() {
                     <span className="opacity-40 text-xl">Unavailable</span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground font-mono mt-1">
-                  ICP
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {neuronStake.isLoading ? (
+                    <span className="opacity-40">Loading…</span>
+                  ) : neuronUsdValue !== null ? (
+                    <>ICP · {formatUsd(neuronUsdValue)} USD</>
+                  ) : (
+                    "ICP"
+                  )}
                 </p>
               </div>
 
@@ -1430,38 +1389,9 @@ export default function App() {
                   <TrendingUp className="h-6 w-6 text-gold" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-                      $BITTYICP Balance
-                    </span>
-                    {fundBalance.isLoading && manualBalances.isLoading ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
-                      >
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />{" "}
-                        Loading
-                      </Badge>
-                    ) : fundHasManual && isAdmin ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-yellow-500/40 text-yellow-400"
-                      >
-                        <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
-                      </Badge>
-                    ) : fundUsdValue !== null ? (
-                      <span className="text-xs font-semibold text-gold/80">
-                        {formatUsd(fundUsdValue)} USD
-                      </span>
-                    ) : fundHasManual || fundHasLive ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
-                      >
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-                      </Badge>
-                    ) : null}
-                  </div>
+                  <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                    $BITTYICP Balance
+                  </p>
                   <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
                     {fundBalance.isLoading && manualBalances.isLoading ? (
                       <span className="opacity-40">—</span>
@@ -1473,9 +1403,17 @@ export default function App() {
                       <span className="opacity-40 text-xl">Unavailable</span>
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono mt-1">
-                    BITTY on ICP
-                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {fundBalance.isLoading && manualBalances.isLoading ? (
+                      <span className="opacity-40">Loading…</span>
+                    ) : fundUsdValue !== null ? (
+                      <>BITTY on ICP · {formatUsd(fundUsdValue)} USD</>
+                    ) : fundHasManual && isAdmin ? (
+                      "BITTY on ICP · MANUAL OVERRIDE"
+                    ) : (
+                      "BITTY on ICP"
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -1503,18 +1441,6 @@ export default function App() {
                   (Due to change to every week at that point)
                 </span>
               </p>
-
-              {/* Fund wallet address — copyable */}
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Fund Wallet Address
-                </p>
-                <p className="text-xs text-muted-foreground mb-1">
-                  Copy this ID to verify the fund on-chain
-                </p>
-                <CopyableId value={FUND_WALLET} label="Fund Wallet Address" />
-              </div>
             </motion.div>
           </section>
 
@@ -1602,23 +1528,6 @@ export default function App() {
                 <span className="text-gold font-semibold">BITTY ON ICP</span>{" "}
                 ecosystem through new games, tools, and development initiatives.
               </p>
-              {gamesWallet && (
-                <>
-                  <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                      Wallet Address
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Copy to verify on-chain
-                    </p>
-                    <CopyableId
-                      value={gamesWallet}
-                      label="Games Wallet Address"
-                    />
-                  </div>
-                </>
-              )}
             </motion.div>
           </section>
           {/* Announcements */}
@@ -1695,15 +1604,11 @@ export default function App() {
           </div>
         </footer>
       </div>
-
-      {/* Login Modal */}
       <LoginModal
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
         onSuccess={handleLoginSuccess}
       />
-
-      {/* Admin Panel Dialog */}
       <Dialog open={adminOpen} onOpenChange={setAdminOpen}>
         <DialogContent
           className="glass-card border-0 max-w-2xl max-h-[90vh] overflow-y-auto"
@@ -1727,8 +1632,6 @@ export default function App() {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* How It Works Modal */}
       <Dialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen}>
         <DialogContent
           className="glass-card-gold border border-[oklch(0.87_0.17_90/0.3)] max-w-lg max-h-[85vh] overflow-y-auto"
