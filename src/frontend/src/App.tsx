@@ -1179,55 +1179,99 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
-          {/* HOW IT WORKS Button */}
-          <div className="flex justify-center">
-            <motion.button
-              onClick={() => setHowItWorksOpen(true)}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-sm tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
-              data-ocid="how_it_works.open_modal_button"
-            >
-              <HelpCircle className="h-4 w-4" />
-              How It Works
-            </motion.button>
-          </div>
-
           {/* Grand Total Treasury Value Banner */}
+          {/* Grand Total + CEO stacked vertically */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55 }}
-            className="glass-card-gold rounded-2xl p-7 text-center"
+            className="glass-card-gold rounded-2xl overflow-visible"
             style={{
               boxShadow:
                 "0 0 48px oklch(0.87 0.17 90 / 0.38), 0 0 96px oklch(0.87 0.17 90 / 0.18)",
             }}
             data-ocid="grand_total.card"
           >
-            <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1">
-              Total Treasury Value
-            </p>
-            <p className="text-xs text-muted-foreground/50 mb-4">
-              All Wallets · Neuron · Funds
-            </p>
-            {grandTotalLoading ? (
-              <div className="flex items-center justify-center gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-gold/60" />
+            {/* Total Balance */}
+            <div className="p-7 text-center">
+              <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1">
+                Total Treasury Value
+              </p>
+              <p className="text-xs text-muted-foreground/50 mb-4">
+                All Wallets · Neuron · Funds
+              </p>
+              {grandTotalLoading ? (
+                <div className="flex items-center justify-center gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-gold/60" />
+                  <span className="text-5xl font-heading font-bold text-gold/30">
+                    —
+                  </span>
+                </div>
+              ) : grandTotalUsd !== null ? (
+                <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
+                  {formatUsd(grandTotalUsd)}
+                </span>
+              ) : (
                 <span className="text-5xl font-heading font-bold text-gold/30">
                   —
                 </span>
-              </div>
-            ) : grandTotalUsd !== null ? (
-              <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
-                {formatUsd(grandTotalUsd)}
-              </span>
-            ) : (
-              <span className="text-5xl font-heading font-bold text-gold/30">
-                —
-              </span>
-            )}
+              )}
+            </div>
           </motion.div>
+
+          {/* Bitty CEO + HOW IT WORKS speech bubble — free-floating below the card */}
+          <div className="flex flex-col items-center mt-2">
+            {/* Cartoon speech bubble */}
+            <button
+              onClick={() => setHowItWorksOpen(true)}
+              data-ocid="how_it_works.open_modal_button"
+              type="button"
+              className="relative mb-2 bg-white border-4 border-black rounded-2xl px-4 py-2 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[4px_4px_0px_#000]"
+              style={{ minWidth: 150 }}
+            >
+              <span
+                className="font-black text-black text-base tracking-wider uppercase leading-tight block text-center"
+                style={{
+                  fontFamily: "Impact, Arial Black, sans-serif",
+                  WebkitTextStroke: "0.5px black",
+                }}
+              >
+                HOW IT WORKS
+              </span>
+              {/* Speech bubble tail pointing down */}
+              <span
+                className="absolute left-1/2 -translate-x-1/2 -bottom-4 w-0 h-0"
+                style={{
+                  borderLeft: "10px solid transparent",
+                  borderRight: "10px solid transparent",
+                  borderTop: "14px solid black",
+                }}
+              />
+              <span
+                className="absolute left-1/2 -translate-x-1/2 -bottom-2.5 w-0 h-0"
+                style={{
+                  borderLeft: "8px solid transparent",
+                  borderRight: "8px solid transparent",
+                  borderTop: "11px solid white",
+                }}
+              />
+            </button>
+            {/* CEO Character — clickable */}
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen(true)}
+              className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200"
+              aria-label="How It Works"
+            >
+              <img
+                src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
+                alt="Bitty CEO"
+                className="object-contain"
+                style={{ height: 220, marginTop: 10 }}
+              />
+            </button>
+          </div>
+
           {/* Balance Section */}
           <section>
             <div className="flex items-center justify-between mb-5">

@@ -8,6 +8,8 @@ const TREASURY_WALLET =
 const FUND_WALLET =
   "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
 const NEURON_ID = "2927437143767212939";
+const GAMES_WALLET =
+  "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
 
 export interface Announcement {
   id: bigint;
@@ -317,10 +319,13 @@ export function useGetAdminConfig() {
   return useQuery<{ neuronTopupAddress: string; gamesWallet: string }>({
     queryKey: ["adminConfig"],
     queryFn: async () => {
-      if (!actor) return { neuronTopupAddress: "", gamesWallet: "" };
+      if (!actor) return { neuronTopupAddress: "", gamesWallet: GAMES_WALLET };
       const a = actor as any;
-      if (!a.getAdminConfig) return { neuronTopupAddress: "", gamesWallet: "" };
-      return await a.getAdminConfig();
+      if (!a.getAdminConfig)
+        return { neuronTopupAddress: "", gamesWallet: GAMES_WALLET };
+      const config = await a.getAdminConfig();
+      // Always use the hardcoded games wallet address
+      return { ...config, gamesWallet: GAMES_WALLET };
     },
     enabled: !!actor && !isFetching,
     staleTime: 30_000,
