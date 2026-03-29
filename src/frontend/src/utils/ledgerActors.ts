@@ -39,10 +39,16 @@ const icrc1IdlFactory = ({ IDL }: { IDL: any }) => {
   });
 };
 
-async function createAgent() {
-  return await HttpAgent.create({
-    host: "https://ic0.app",
-  });
+let _agentPromise: Promise<HttpAgent> | null = null;
+
+function createAgent(): Promise<HttpAgent> {
+  if (!_agentPromise) {
+    _agentPromise = HttpAgent.create({
+      host: "https://ic0.app",
+      verifyQuerySignatures: false,
+    });
+  }
+  return _agentPromise;
 }
 
 async function createAuthenticatedAgent(identity: any) {

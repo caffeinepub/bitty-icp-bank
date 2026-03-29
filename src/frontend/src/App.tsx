@@ -198,11 +198,15 @@ function BalanceCard({
         </div>
       )}
       <div className="text-xs text-muted-foreground font-mono">{symbol}</div>
-      {!isLoading && usdValue !== null && (
+      {isLoading ? (
+        <div className="text-xs text-muted-foreground opacity-50 mt-0.5">
+          Loading…
+        </div>
+      ) : usdValue !== null ? (
         <div className="text-sm text-muted-foreground mt-0.5">
           {formatUsd(usdValue)} USD
         </div>
-      )}
+      ) : null}
       {!isLoading && usdValue === null && showingManual && isAdmin && (
         <Badge
           variant="outline"
@@ -980,7 +984,9 @@ export default function App() {
   const announcements = useGetAnnouncements();
   const tokenPrices = useTokenPrices();
   const adminConfig = useGetAdminConfig();
-  const gamesWallet = adminConfig.data?.gamesWallet ?? "";
+  const GAMES_WALLET_ADDRESS =
+    "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
+  const gamesWallet = adminConfig.data?.gamesWallet || GAMES_WALLET_ADDRESS;
   const gamesBalances = useGetGamesWalletBalances(gamesWallet);
 
   const isAdmin = !!adminPassword;
@@ -1289,7 +1295,7 @@ export default function App() {
                 symbol="Internet Computer"
                 liveValue={icpLive}
                 manualValue={manualIcp}
-                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={icpUsd}
               />
@@ -1298,7 +1304,7 @@ export default function App() {
                 symbol="BITTY on ICP"
                 liveValue={bittyLive}
                 manualValue={manualBitty}
-                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={bittyUsd}
               />
