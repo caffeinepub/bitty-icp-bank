@@ -1061,8 +1061,7 @@ export default function App() {
       : null;
   const totalIcpLoading =
     (liveBalances.isLoading && manualBalances.isLoading) ||
-    neuronStake.isLoading ||
-    tokenPrices.isLoading;
+    neuronStake.isLoading;
 
   // Grand total USD = all treasury sources combined
   const bittyTreasuryNum = resolveBalanceNumber(manualBitty, bittyLive);
@@ -1095,9 +1094,7 @@ export default function App() {
       : null;
 
   const grandTotalLoading =
-    totalIcpLoading ||
-    (liveBalances.isLoading && manualBalances.isLoading) ||
-    tokenPrices.isLoading;
+    totalIcpLoading || (liveBalances.isLoading && manualBalances.isLoading);
 
   const sortedAnnouncements = [...(announcements.data ?? [])].sort((a, b) =>
     b.timestamp > a.timestamp ? 1 : -1,

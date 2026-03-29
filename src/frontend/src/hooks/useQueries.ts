@@ -221,10 +221,23 @@ export function useGetNeuronStake() {
 const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
 
 async function fetchIcpUsd(): Promise<number | null> {
-  // Kraken public API - CORS allowed, no API key needed
+  // CoinGecko public API - first attempt
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=internet-computer&vs_currencies=usd",
+      { signal: AbortSignal.timeout(4000) },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const price = data["internet-computer"]?.usd;
+      if (price) return Number.parseFloat(price) || null;
+    }
+  } catch {}
+  // Fallback: Kraken
   try {
     const res = await fetch(
       "https://api.kraken.com/0/public/Ticker?pair=ICPUSD",
+      { signal: AbortSignal.timeout(4000) },
     );
     if (res.ok) {
       const data = await res.json();
@@ -236,6 +249,7 @@ async function fetchIcpUsd(): Promise<number | null> {
   try {
     const res = await fetch(
       "https://api.binance.com/api/v3/ticker/price?symbol=ICPUSDT",
+      { signal: AbortSignal.timeout(4000) },
     );
     if (res.ok) {
       const data = await res.json();
@@ -250,7 +264,7 @@ async function fetchBittyUsd(): Promise<number | null> {
   try {
     const res = await fetch(
       `https://api.icpswap.com/info/token/${BITTYICP_CANISTER}`,
-      { signal: AbortSignal.timeout(8000) },
+      { signal: AbortSignal.timeout(3000) },
     );
     if (res.ok) {
       const data = await res.json();
@@ -271,7 +285,7 @@ async function fetchBittyUsd(): Promise<number | null> {
   // 2. ICPSwap token/all with timeout (fallback, large payload)
   try {
     const res = await fetch("https://api.icpswap.com/info/token/all", {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(5000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -310,7 +324,7 @@ export function useTokenPrices() {
     },
     staleTime: 60_000,
     refetchInterval: 60_000,
-    retry: 2,
+    retry: 1,
   });
 }
 
