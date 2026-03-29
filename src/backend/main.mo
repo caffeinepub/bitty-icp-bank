@@ -169,7 +169,7 @@ actor {
   stable var manualFund : Text = "";
   stable var manualBittyPriceUSD : Text = "";
   stable var neuronTopupAddress : Text = "";
-  stable var gamesWallet : Text = "";
+  stable var gamesWallet : Text = "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
 
   // Custom proposals state
   stable var customProposals : [CustomProposal] = [];

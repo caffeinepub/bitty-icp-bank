@@ -1077,9 +1077,23 @@ export default function App() {
       ? bittyTreasuryNum * bittyUsd
       : null;
 
+  const gamesBittyRaw = gamesBalances.data?.bitty ?? null;
+  const gamesBittyNum =
+    gamesBittyRaw !== null ? Number(gamesBittyRaw) / 1e8 : null;
+  const gamesUsdValue =
+    gamesBittyNum !== null && bittyUsd !== null
+      ? gamesBittyNum * bittyUsd
+      : null;
+
   const grandTotalUsd =
-    totalIcpUsd !== null || bittyTreasuryUsd !== null || fundUsdValue !== null
-      ? (totalIcpUsd ?? 0) + (bittyTreasuryUsd ?? 0) + (fundUsdValue ?? 0)
+    totalIcpUsd !== null ||
+    bittyTreasuryUsd !== null ||
+    fundUsdValue !== null ||
+    gamesUsdValue !== null
+      ? (totalIcpUsd ?? 0) +
+        (bittyTreasuryUsd ?? 0) +
+        (fundUsdValue ?? 0) +
+        (gamesUsdValue ?? 0)
       : null;
 
   const grandTotalLoading =

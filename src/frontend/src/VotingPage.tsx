@@ -387,7 +387,7 @@ function MyWalletPanel({
           <p className="text-sm font-black text-yellow-400 uppercase tracking-widest mb-4 text-center">
             TOKEN BALANCES
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div className="rounded-xl border border-yellow-500/30 bg-black/50 p-3 text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                 $BITTYICP
@@ -425,9 +425,9 @@ function MyWalletPanel({
             type="button"
             data-ocid="wallet.toggle"
             onClick={() => setShowSend(!showSend)}
-            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            className="flex items-center gap-2 text-base font-semibold text-blue-400 hover:text-blue-300 transition-colors"
           >
-            <ArrowUpRight className="w-3 h-3" />
+            <ArrowUpRight className="w-4 h-4" />
             Send $BITTYICP or $ICP
           </button>
           {showSend && (
