@@ -145,12 +145,24 @@ function getVoteStatusInfo(vote: MonthlyVote): {
 } {
   const now = BigInt(Date.now()) * BigInt(1_000_000);
   if (vote.isFinalized)
-    return { label: "FINALIZED", color: "text-purple-400 border-purple-400" };
+    return {
+      label: "FINALIZED",
+      color: "text-gray-300 border-gray-500 bg-gray-500/10",
+    };
   if (now < vote.openTime)
-    return { label: "UPCOMING", color: "text-blue-400 border-blue-400" };
+    return {
+      label: "UPCOMING",
+      color: "text-blue-400 border-blue-400 bg-blue-500/10",
+    };
   if (now > vote.closeTime)
-    return { label: "CLOSED", color: "text-red-400 border-red-400" };
-  return { label: "OPEN", color: "text-green-400 border-green-400" };
+    return {
+      label: "CLOSED",
+      color: "text-amber-400 border-amber-500 bg-amber-500/10",
+    };
+  return {
+    label: "🟢 LIVE",
+    color: "text-green-400 border-green-400 bg-green-500/10",
+  };
 }
 
 function isVoteOpen(vote: MonthlyVote): boolean {
@@ -1212,12 +1224,16 @@ function VoteCard({
           >
             {status.label}
           </span>
-          {open && (
+          {vote.isFinalized ? (
+            <span className="text-xs text-gray-400 flex items-center gap-1">
+              <span>Voting Closed</span>
+            </span>
+          ) : open ? (
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {timeRemaining(vote.closeTime)}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -1327,9 +1343,14 @@ function VoteCard({
         {/* Admin Controls */}
         {isAdmin && (
           <div className="border-t border-yellow-600/20 pt-4 space-y-3">
-            <p className="text-xs font-semibold text-yellow-500 uppercase tracking-wider">
-              Admin Controls
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-yellow-500 uppercase tracking-wider">
+                Admin Controls
+              </p>
+              <span className="text-xs font-bold bg-red-500/20 border border-red-500/50 text-red-400 px-2 py-0.5 rounded-full">
+                ADMIN ONLY
+              </span>
+            </div>
             <div className="flex gap-2">
               <Input
                 data-ocid="vote.input"
@@ -2350,12 +2371,21 @@ function CustomProposalCard({
   );
 
   const voteTypeBadge = "ICP" in proposal.voteType ? "$ICP" : "$BITTYICP";
+  const isDistributed = proposal.isFinalized && (proposal as any).distributed;
   const statusColor = isOpen
     ? "border-green-500/60 text-green-400 bg-green-500/10"
     : isExpired
       ? "border-amber-500/60 text-amber-400 bg-amber-500/10"
-      : "border-gray-500/60 text-gray-400 bg-gray-500/10";
-  const statusLabel = isOpen ? "OPEN" : isExpired ? "EXPIRED" : "FINALIZED";
+      : isDistributed
+        ? "border-purple-500/60 text-purple-400 bg-purple-500/10"
+        : "border-gray-500/60 text-gray-400 bg-gray-500/10";
+  const statusLabel = isOpen
+    ? "🟢 LIVE"
+    : isExpired
+      ? "CLOSED"
+      : isDistributed
+        ? "✓ DISTRIBUTED"
+        : "FINALIZED";
 
   return (
     <motion.div
@@ -2390,8 +2420,14 @@ function CustomProposalCard({
 
         {/* Time remaining */}
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <Clock className="w-3.5 h-3.5 shrink-0" />
-          <span>{timeRemaining(proposal.closeTime)}</span>
+          {isFinalized ? (
+            <span className="text-gray-500">Voting Closed</span>
+          ) : (
+            <>
+              <Clock className="w-3.5 h-3.5 shrink-0" />
+              <span>{timeRemaining(proposal.closeTime)}</span>
+            </>
+          )}
           {proposal.totalVoteAmount && proposal.totalVoteAmount !== "0" && (
             <span className="ml-auto text-yellow-400 font-semibold">
               {proposal.totalVoteAmount} {voteTypeBadge}
@@ -2462,9 +2498,14 @@ function CustomProposalCard({
         {/* Admin controls */}
         {isAdmin && (
           <div className="border-t border-yellow-600/20 pt-4 space-y-3">
-            <p className="text-xs text-yellow-400 font-semibold uppercase tracking-wider">
-              Admin Controls
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-yellow-400 font-semibold uppercase tracking-wider">
+                Admin Controls
+              </p>
+              <span className="text-xs font-bold bg-red-500/20 border border-red-500/50 text-red-400 px-2 py-0.5 rounded-full">
+                ADMIN ONLY
+              </span>
+            </div>
             <div className="flex gap-2">
               <Input
                 data-ocid="proposal.input"
@@ -3060,18 +3101,13 @@ export default function VotingPage({
   const upcomingICP = upcomingICPAll.slice(0, 1);
 
   return (
-    <div className="min-h-screen bg-black text-white relative">
-      {/* Background */}
-      <div
-        className="fixed inset-0 z-0"
-        style={{
-          backgroundImage: "url('/assets/IMG_5288.jpeg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      />
-      <div className="fixed inset-0 z-0 bg-black/55" />
-
+    <div
+      className="min-h-screen text-white relative"
+      style={{
+        background:
+          "linear-gradient(135deg, #0a0f1e 0%, #0d1635 50%, #0a0f1e 100%)",
+      }}
+    >
       <div className="relative z-10 max-w-2xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
         <motion.div
