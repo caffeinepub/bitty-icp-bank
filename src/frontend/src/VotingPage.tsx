@@ -2545,6 +2545,8 @@ function CreateProposalForm({
   const [options, setOptions] = useState(["", ""]);
   const [endDateTime, setEndDateTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { actor: localActor } = useActor();
+  const activeActor = localActor || actor;
 
   function addOption() {
     if (options.length < 6) setOptions([...options, ""]);
@@ -2569,8 +2571,13 @@ function CreateProposalForm({
       BigInt(new Date(endDateTime).getTime()) * BigInt(1_000_000);
     const voteTypeArg = voteType === "ICP" ? { ICP: null } : { BITTYICP: null };
     setSubmitting(true);
+    if (!activeActor) {
+      toast.error("Not connected to network. Please wait and try again.");
+      setSubmitting(false);
+      return;
+    }
     try {
-      const result = await (actor as any).createCustomProposal(
+      const result = await (activeActor as any).createCustomProposal(
         adminPassword,
         title.trim(),
         description.trim(),
@@ -3104,7 +3111,7 @@ export default function VotingPage({
         >
           <div className="flex items-center justify-center gap-3 mb-2">
             <img
-              src="/assets/uploads/img_4570-019d364f-b05b-7469-b9d0-e8428c9ccfeb-1.jpeg"
+              src="/assets/bittyicp-coin.jpeg"
               alt="BITTYICP coin"
               className="w-20 h-20 rounded-full object-cover coin-spin"
             />

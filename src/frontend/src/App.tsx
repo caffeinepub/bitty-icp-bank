@@ -198,7 +198,7 @@ function BalanceCard({
           </Badge>
         ) : usdValue !== null ? (
           <span className="text-xs font-semibold text-gold/80">
-            {formatUsd(usdValue)}
+            {formatUsd(usdValue)} USD
           </span>
         ) : showingManual || hasLive ? (
           <Badge
@@ -1070,6 +1070,23 @@ export default function App() {
     neuronStake.isLoading ||
     tokenPrices.isLoading;
 
+  // Grand total USD = all treasury sources combined
+  const bittyTreasuryNum = resolveBalanceNumber(manualBitty, bittyLive);
+  const bittyTreasuryUsd =
+    bittyTreasuryNum !== null && bittyUsd !== null
+      ? bittyTreasuryNum * bittyUsd
+      : null;
+
+  const grandTotalUsd =
+    totalIcpUsd !== null || bittyTreasuryUsd !== null || fundUsdValue !== null
+      ? (totalIcpUsd ?? 0) + (bittyTreasuryUsd ?? 0) + (fundUsdValue ?? 0)
+      : null;
+
+  const grandTotalLoading =
+    totalIcpLoading ||
+    (liveBalances.isLoading && manualBalances.isLoading) ||
+    tokenPrices.isLoading;
+
   const sortedAnnouncements = [...(announcements.data ?? [])].sort((a, b) =>
     b.timestamp > a.timestamp ? 1 : -1,
   );
@@ -1158,11 +1175,47 @@ export default function App() {
             </motion.button>
           </div>
 
+          {/* Grand Total Treasury Value Banner */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            className="glass-card-gold rounded-2xl p-7 text-center"
+            style={{
+              boxShadow:
+                "0 0 48px oklch(0.87 0.17 90 / 0.38), 0 0 96px oklch(0.87 0.17 90 / 0.18)",
+            }}
+            data-ocid="grand_total.card"
+          >
+            <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1">
+              Total Treasury Value
+            </p>
+            <p className="text-xs text-muted-foreground/50 mb-4">
+              All Wallets · Neuron · Funds
+            </p>
+            {grandTotalLoading ? (
+              <div className="flex items-center justify-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-gold/60" />
+                <span className="text-5xl font-heading font-bold text-gold/30">
+                  —
+                </span>
+              </div>
+            ) : grandTotalUsd !== null ? (
+              <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
+                {formatUsd(grandTotalUsd)}
+              </span>
+            ) : (
+              <span className="text-5xl font-heading font-bold text-gold/30">
+                —
+              </span>
+            )}
+          </motion.div>
+
           {/* Total ICP Treasury Value Banner */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.5, delay: 0.08 }}
             className="glass-card-gold gold-glow rounded-2xl p-6"
             data-ocid="total_icp.card"
           >
