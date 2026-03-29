@@ -2545,8 +2545,7 @@ function CreateProposalForm({
   const [options, setOptions] = useState(["", ""]);
   const [endDateTime, setEndDateTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { actor: localActor, isFetching: actorLoading } = useActor();
-  const activeActor = localActor || actor;
+  const activeActor = actor;
 
   function addOption() {
     if (options.length < 6) setOptions([...options, ""]);
@@ -2743,15 +2742,10 @@ function CreateProposalForm({
               <Button
                 data-ocid="proposal.submit_button"
                 onClick={handleSubmit}
-                disabled={submitting || actorLoading}
+                disabled={submitting}
                 className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold"
               >
-                {actorLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />{" "}
-                    Connecting…
-                  </>
-                ) : submitting ? (
+                {submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin mr-2" /> Creating…
                   </>
@@ -3071,7 +3065,7 @@ export default function VotingPage({
       <div
         className="fixed inset-0 z-0"
         style={{
-          backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')",
+          backgroundImage: "url('/assets/IMG_5288.jpeg')",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}

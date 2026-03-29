@@ -1106,7 +1106,7 @@ export default function App() {
       {/* Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
+        style={{ backgroundImage: "url('/assets/IMG_5288.jpeg')" }}
       />
       {/* Overlay */}
       <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.40)] via-[oklch(0.10_0.025_252/0.35)] to-[oklch(0.05_0.01_252/0.55)]" />
