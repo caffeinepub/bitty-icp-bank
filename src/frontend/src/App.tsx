@@ -1326,7 +1326,7 @@ export default function App() {
                 isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={icpUsd}
-                explorerUrl="https://dashboard.internetcomputer.org/account/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
+                explorerUrl="https://www.icexplorer.io/address/detail/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
               <BalanceCard
                 token="$BITTYICP Balance"
@@ -1336,7 +1336,7 @@ export default function App() {
                 isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={bittyUsd}
-                explorerUrl="https://dashboard.internetcomputer.org/account/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
+                explorerUrl="https://www.icexplorer.io/address/detail/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
             </div>
           </section>
@@ -1427,7 +1427,7 @@ export default function App() {
               BITTY ON ICP Future Investment Fund
             </h2>
             <a
-              href="https://dashboard.internetcomputer.org/account/vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae"
+              href="https://www.icexplorer.io/address/detail/vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae"
               target="_blank"
               rel="noopener noreferrer"
               className="block"
@@ -1514,7 +1514,7 @@ export default function App() {
               Games &amp; Development Wallet
             </h2>
             <a
-              href="https://dashboard.internetcomputer.org/account/slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe"
+              href="https://www.icexplorer.io/address/detail/slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe"
               target="_blank"
               rel="noopener noreferrer"
               className="block"
