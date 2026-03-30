@@ -53,6 +53,8 @@ import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import VotingPage from "./VotingPage";
 
+const HIDE_BALANCES = false;
+
 const NEURON_ID = "2927437143767212939";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -146,6 +148,7 @@ interface BalanceCardProps {
   isLoading: boolean;
   isAdmin: boolean;
   usdPrice: number | null | undefined; // price per token in USD
+  explorerUrl?: string;
 }
 
 function BalanceCard({
@@ -156,6 +159,7 @@ function BalanceCard({
   isLoading,
   isAdmin,
   usdPrice,
+  explorerUrl,
 }: BalanceCardProps) {
   const hasManual = manualValue && manualValue.trim() !== "";
   const hasLive = liveValue !== null && liveValue !== undefined;
@@ -169,12 +173,12 @@ function BalanceCard({
       ? balanceNum * usdPrice
       : null;
 
-  return (
+  const cardContent = (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-2 min-w-0 flex-1`}
+      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-2 min-w-0 flex-1 ${explorerUrl ? "cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all" : ""}`}
     >
       <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
         {token}
@@ -188,7 +192,9 @@ function BalanceCard({
         <div
           className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
         >
-          {hasManual ? (
+          {HIDE_BALANCES ? (
+            <span>0</span>
+          ) : hasManual ? (
             manualValue
           ) : hasLive ? (
             formatBalance(liveValue!)
@@ -202,6 +208,8 @@ function BalanceCard({
         <div className="text-xs text-muted-foreground opacity-50 mt-0.5">
           Loading…
         </div>
+      ) : HIDE_BALANCES ? (
+        <div className="text-sm text-muted-foreground mt-0.5">$0.00 USD</div>
       ) : usdValue !== null ? (
         <div className="text-sm text-muted-foreground mt-0.5">
           {formatUsd(usdValue)} USD
@@ -215,8 +223,27 @@ function BalanceCard({
           <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
         </Badge>
       )}
+      {explorerUrl && (
+        <div className="text-xs text-muted-foreground/50 mt-1">
+          View on IC Dashboard ↗
+        </div>
+      )}
     </motion.div>
   );
+
+  if (explorerUrl) {
+    return (
+      <a
+        href={explorerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block min-w-0 flex-1"
+      >
+        {cardContent}
+      </a>
+    );
+  }
+  return cardContent;
 }
 
 // ─── Admin Panel ─────────────────────────────────────────────────────────────
@@ -1191,7 +1218,11 @@ export default function App() {
               <p className="text-xs text-muted-foreground/50 mb-4">
                 All Wallets · Neuron · Funds
               </p>
-              {grandTotalLoading ? (
+              {HIDE_BALANCES ? (
+                <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
+                  $0.00
+                </span>
+              ) : grandTotalLoading ? (
                 <div className="flex items-center justify-center gap-3">
                   <Loader2 className="h-6 w-6 animate-spin text-gold/60" />
                   <span className="text-5xl font-heading font-bold text-gold/30">
@@ -1295,6 +1326,7 @@ export default function App() {
                 isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={icpUsd}
+                explorerUrl="https://dashboard.internetcomputer.org/account/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
               <BalanceCard
                 token="$BITTYICP Balance"
@@ -1304,6 +1336,7 @@ export default function App() {
                 isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={bittyUsd}
+                explorerUrl="https://dashboard.internetcomputer.org/account/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
             </div>
           </section>
@@ -1313,65 +1346,79 @@ export default function App() {
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
               NNS Public Neuron
             </h2>
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
-              data-ocid="neuron.card"
+            <a
+              href="https://dashboard.internetcomputer.org/neuron/2927437143767212939"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
             >
-              {/* Neuron ID row */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
-                  <Brain className="h-6 w-6 text-gold" />
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="neuron.card"
+              >
+                {/* Neuron ID row */}
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <Brain className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                      Neuron ID
+                    </p>
+                    <CopyableId value={NEURON_ID} label="Neuron ID" />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
+
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+                {/* ICP Stake */}
+                <div>
                   <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                    Neuron ID
+                    ICP Staked
                   </p>
-                  <CopyableId value={NEURON_ID} label="Neuron ID" />
+                  <div className="text-3xl font-heading font-bold text-gold tabular-nums">
+                    {HIDE_BALANCES ? (
+                      <span>0</span>
+                    ) : neuronStake.isLoading ? (
+                      <span className="opacity-40">—</span>
+                    ) : neuronStake.data !== null &&
+                      neuronStake.data !== undefined ? (
+                      neuronStake.data.toLocaleString("en-US", {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 4,
+                      })
+                    ) : (
+                      <span className="opacity-40 text-xl">Unavailable</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {HIDE_BALANCES ? (
+                      "ICP · $0.00 USD"
+                    ) : neuronStake.isLoading ? (
+                      <span className="opacity-40">Loading…</span>
+                    ) : neuronUsdValue !== null ? (
+                      <>ICP · {formatUsd(neuronUsdValue)} USD</>
+                    ) : (
+                      "ICP"
+                    )}
+                  </p>
                 </div>
-              </div>
 
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
 
-              {/* ICP Stake */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  ICP Staked
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  This neuron stakes ICP on behalf of the treasury through the
+                  Network Nervous System (NNS), earning staking rewards that
+                  grow the bank over time.
                 </p>
-                <div className="text-3xl font-heading font-bold text-gold tabular-nums">
-                  {neuronStake.isLoading ? (
-                    <span className="opacity-40">—</span>
-                  ) : neuronStake.data !== null &&
-                    neuronStake.data !== undefined ? (
-                    neuronStake.data.toLocaleString("en-US", {
-                      minimumFractionDigits: 4,
-                      maximumFractionDigits: 4,
-                    })
-                  ) : (
-                    <span className="opacity-40 text-xl">Unavailable</span>
-                  )}
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
                 </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {neuronStake.isLoading ? (
-                    <span className="opacity-40">Loading…</span>
-                  ) : neuronUsdValue !== null ? (
-                    <>ICP · {formatUsd(neuronUsdValue)} USD</>
-                  ) : (
-                    "ICP"
-                  )}
-                </p>
-              </div>
-
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                This neuron stakes ICP on behalf of the treasury through the
-                Network Nervous System (NNS), earning staking rewards that grow
-                the bank over time.
-              </p>
-            </motion.div>
+              </motion.div>
+            </a>
           </section>
 
           {/* Future Investment Fund Section */}
@@ -1379,72 +1426,86 @@ export default function App() {
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
               BITTY ON ICP Future Investment Fund
             </h2>
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.15 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
-              data-ocid="fund.card"
+            <a
+              href="https://dashboard.internetcomputer.org/account/vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
             >
-              {/* Icon + balance */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
-                  <TrendingUp className="h-6 w-6 text-gold" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                    $BITTYICP Balance
-                  </p>
-                  <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
-                    {fundBalance.isLoading && manualBalances.isLoading ? (
-                      <span className="opacity-40">—</span>
-                    ) : fundHasManual ? (
-                      manualFund
-                    ) : fundHasLive ? (
-                      formatBalance(fundLive!)
-                    ) : (
-                      <span className="opacity-40 text-xl">Unavailable</span>
-                    )}
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.15 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="fund.card"
+              >
+                {/* Icon + balance */}
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <TrendingUp className="h-6 w-6 text-gold" />
                   </div>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {fundBalance.isLoading && manualBalances.isLoading ? (
-                      <span className="opacity-40">Loading…</span>
-                    ) : fundUsdValue !== null ? (
-                      <>BITTY on ICP · {formatUsd(fundUsdValue)} USD</>
-                    ) : fundHasManual && isAdmin ? (
-                      "BITTY on ICP · MANUAL OVERRIDE"
-                    ) : (
-                      "BITTY on ICP"
-                    )}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                      $BITTYICP Balance
+                    </p>
+                    <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
+                      {HIDE_BALANCES ? (
+                        <span>0</span>
+                      ) : fundBalance.isLoading && manualBalances.isLoading ? (
+                        <span className="opacity-40">—</span>
+                      ) : fundHasManual ? (
+                        manualFund
+                      ) : fundHasLive ? (
+                        formatBalance(fundLive!)
+                      ) : (
+                        <span className="opacity-40 text-xl">Unavailable</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {HIDE_BALANCES ? (
+                        "BITTY on ICP · $0.00 USD"
+                      ) : fundBalance.isLoading && manualBalances.isLoading ? (
+                        <span className="opacity-40">Loading…</span>
+                      ) : fundUsdValue !== null ? (
+                        <>BITTY on ICP · {formatUsd(fundUsdValue)} USD</>
+                      ) : fundHasManual && isAdmin ? (
+                        "BITTY on ICP · MANUAL OVERRIDE"
+                      ) : (
+                        "BITTY on ICP"
+                      )}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Description */}
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                The future investment fund is a fully funded wallet with{" "}
-                <span className="text-gold font-semibold">$BITTYICP</span> that
-                will remain unavailable until{" "}
-                <span className="text-gold font-semibold">
-                  &ldquo;BITTY ON ICP&rdquo;
-                </span>{" "}
-                FDV is at a minimum{" "}
-                <span className="text-gold font-semibold">
-                  $2,500,000.00 USD
-                </span>
-                . At this point the fund will be sold for $ICP and re-invested
-                into the{" "}
-                <span className="text-gold font-semibold">
-                  &ldquo;BITTY ICP BANK&rdquo;
-                </span>{" "}
-                to exponentially grow the daily dividends that the community
-                will be able to vote on its usage every month.{" "}
-                <span className="text-muted-foreground/60 italic">
-                  (Due to change to every week at that point)
-                </span>
-              </p>
-            </motion.div>
+                {/* Description */}
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The future investment fund is a fully funded wallet with{" "}
+                  <span className="text-gold font-semibold">$BITTYICP</span>{" "}
+                  that will remain unavailable until{" "}
+                  <span className="text-gold font-semibold">
+                    &ldquo;BITTY ON ICP&rdquo;
+                  </span>{" "}
+                  FDV is at a minimum{" "}
+                  <span className="text-gold font-semibold">
+                    $2,500,000.00 USD
+                  </span>
+                  . At this point the fund will be sold for $ICP and re-invested
+                  into the{" "}
+                  <span className="text-gold font-semibold">
+                    &ldquo;BITTY ICP BANK&rdquo;
+                  </span>{" "}
+                  to exponentially grow the daily dividends that the community
+                  will be able to vote on its usage every month.{" "}
+                  <span className="text-muted-foreground/60 italic">
+                    (Due to change to every week at that point)
+                  </span>
+                </p>
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
+                </div>
+              </motion.div>
+            </a>
           </section>
 
           {/* Games & Development Wallet */}
@@ -1452,86 +1513,109 @@ export default function App() {
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
               Games &amp; Development Wallet
             </h2>
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
-              data-ocid="games.card"
+            <a
+              href="https://dashboard.internetcomputer.org/account/slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
             >
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
-                  <Gamepad2 className="h-6 w-6 text-gold" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  {!gamesWallet ? (
-                    <div>
-                      <div className="text-2xl font-heading font-bold text-gold/60">
-                        COMING SOON
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Wallet address not yet configured
-                      </div>
-                    </div>
-                  ) : gamesBalances.isLoading ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Loading
-                      balances...
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="games.card"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <Gamepad2 className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {!gamesWallet ? (
                       <div>
-                        <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                          $ICP Balance
+                        <div className="text-2xl font-heading font-bold text-gold/60">
+                          COMING SOON
                         </div>
-                        <div className="text-2xl font-heading font-bold text-gold tabular-nums">
-                          {gamesBalances.data?.icp != null ? (
-                            formatBalance(gamesBalances.data.icp)
-                          ) : (
-                            <span className="opacity-40 text-xl">
-                              Unavailable
-                            </span>
-                          )}
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Wallet address not yet configured
                         </div>
-                        {gamesIcpUsd !== null && (
-                          <div className="text-sm text-muted-foreground mt-0.5">
-                            {formatUsd(gamesIcpUsd)} USD
-                          </div>
-                        )}
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                          $BITTYICP Balance
-                        </div>
-                        <div className="text-2xl font-heading font-bold text-gold tabular-nums">
-                          {gamesBalances.data?.bitty != null ? (
-                            formatBalance(gamesBalances.data.bitty)
-                          ) : (
-                            <span className="opacity-40 text-xl">
-                              Unavailable
-                            </span>
-                          )}
-                        </div>
-                        {gamesUsdValue !== null && (
-                          <div className="text-sm text-muted-foreground mt-0.5">
-                            {formatUsd(gamesUsdValue)} USD
-                          </div>
-                        )}
+                    ) : gamesBalances.isLoading ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                        balances...
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $ICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : gamesBalances.data?.icp != null ? (
+                              formatBalance(gamesBalances.data.icp)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : gamesIcpUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(gamesIcpUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $BITTYICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : gamesBalances.data?.bitty != null ? (
+                              formatBalance(gamesBalances.data.bitty)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : gamesUsdValue !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(gamesUsdValue)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                This wallet receives{" "}
-                <span className="text-gold font-semibold">$BITTYICP</span> when
-                the community votes to send treasury funds to Games &amp;
-                Development. Funds here are used to grow the{" "}
-                <span className="text-gold font-semibold">BITTY ON ICP</span>{" "}
-                ecosystem through new games, tools, and development initiatives.
-              </p>
-            </motion.div>
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This wallet receives{" "}
+                  <span className="text-gold font-semibold">$BITTYICP</span>{" "}
+                  when the community votes to send treasury funds to Games &amp;
+                  Development. Funds here are used to grow the{" "}
+                  <span className="text-gold font-semibold">BITTY ON ICP</span>{" "}
+                  ecosystem through new games, tools, and development
+                  initiatives.
+                </p>
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
+                </div>
+              </motion.div>
+            </a>
           </section>
           {/* Announcements */}
           <section>
