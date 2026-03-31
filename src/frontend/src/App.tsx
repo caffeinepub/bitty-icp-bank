@@ -55,7 +55,7 @@ import VotingPage from "./VotingPage";
 
 const HIDE_BALANCES = false;
 
-const NEURON_ID = "9571697172598853748";
+const NEURON_ID = "2927437143767212939";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
 
 function copyToClipboard(text: string, label: string) {
@@ -456,6 +456,9 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
           value={annTitle}
           onChange={(e) => setAnnTitle(e.target.value)}
           className="bg-secondary/50 border-border"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handlePostAnnouncement();
+          }}
           data-ocid="announcement.title.input"
         />
         <Textarea
@@ -465,6 +468,10 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
           onChange={(e) => setAnnBody(e.target.value)}
           rows={3}
           className="bg-secondary/50 border-border resize-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey))
+              handlePostAnnouncement();
+          }}
           data-ocid="announcement.body.textarea"
         />
         <Button
@@ -1347,7 +1354,7 @@ export default function App() {
               NNS Public Neuron
             </h2>
             <a
-              href="https://dashboard.internetcomputer.org/neuron/9571697172598853748"
+              href="https://dashboard.internetcomputer.org/neuron/2927437143767212939"
               target="_blank"
               rel="noopener noreferrer"
               className="block"
