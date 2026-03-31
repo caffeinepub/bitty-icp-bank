@@ -7,7 +7,7 @@ const TREASURY_WALLET =
   "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
 const FUND_WALLET =
   "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
-const NEURON_ID = "2927437143767212939";
+const NEURON_ID = "9571697172598853748";
 const GAMES_WALLET =
   "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
 

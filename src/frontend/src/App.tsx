@@ -55,7 +55,7 @@ import VotingPage from "./VotingPage";
 
 const HIDE_BALANCES = false;
 
-const NEURON_ID = "2927437143767212939";
+const NEURON_ID = "9571697172598853748";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
 
 function copyToClipboard(text: string, label: string) {
@@ -1347,7 +1347,7 @@ export default function App() {
               NNS Public Neuron
             </h2>
             <a
-              href="https://dashboard.internetcomputer.org/neuron/2927437143767212939"
+              href="https://dashboard.internetcomputer.org/neuron/9571697172598853748"
               target="_blank"
               rel="noopener noreferrer"
               className="block"
