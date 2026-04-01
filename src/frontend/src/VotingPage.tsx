@@ -3077,64 +3077,67 @@ function CustomRewardsBanner({
             proposal?.title ?? `Proposal #${String(pool.proposalId)}`;
           const voteTypeBadge = "ICP" in pool.voteType ? "$ICP" : "$BITTYICP";
           return (
-            <div
-              key={String(pool.proposalId)}
-              data-ocid="rewards.item.1"
-              className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white/5 border border-yellow-600/20"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-yellow-300 truncate">
-                  {title}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {voteTypeBadge} · Losing:{" "}
-                  <span className="text-yellow-400">
-                    {pool.losingOptionLabel}
-                  </span>{" "}
-                  ({Number(pool.losingOptionPct)}%)
-                </p>
-                {isAdmin ? (
-                  <p className="text-xs text-gray-400">
-                    Pool: <span className="text-white">{pool.poolAmount}</span>
+            <div key={String(pool.proposalId)} className="space-y-0">
+              <div
+                data-ocid="rewards.item.1"
+                className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white/5 border border-yellow-600/20"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-yellow-300 truncate">
+                    {title}
                   </p>
-                ) : (
                   <p className="text-xs text-gray-400">
-                    Total Distribution Pool:{" "}
-                    <span className="text-white">
-                      {pool.poolAmount} {voteTypeBadge}
+                    {voteTypeBadge} · Losing:{" "}
+                    <span className="text-yellow-400">
+                      {pool.losingOptionLabel}
+                    </span>{" "}
+                    ({Number(pool.losingOptionPct)}%)
+                  </p>
+                  {isAdmin ? (
+                    <p className="text-xs text-gray-400">
+                      Pool:{" "}
+                      <span className="text-white">{pool.poolAmount}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">
+                      Total Distribution Pool:{" "}
+                      <span className="text-white">
+                        {pool.poolAmount} {voteTypeBadge}
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {pool.distributed ? (
+                    <span className="text-xs text-green-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Distributed
                     </span>
-                  </p>
-                )}
+                  ) : (
+                    <span className="text-xs text-amber-400 flex items-center gap-1">
+                      <Gift className="w-3 h-3" />
+                      Pending
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-2 shrink-0">
-                {pool.distributed ? (
-                  <span className="text-xs text-green-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Distributed
-                  </span>
-                ) : (
-                  <span className="text-xs text-amber-400 flex items-center gap-1">
-                    <Gift className="w-3 h-3" />
-                    Pending
-                  </span>
-                )}
-                {isAdmin && !pool.distributed && (
-                  <Button
-                    data-ocid="rewards.confirm_button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => markDistributed(pool.proposalId)}
-                    disabled={marking === pool.proposalId}
-                    className="border-green-500/50 text-green-400 hover:bg-green-500/10 text-xs"
-                  >
-                    {marking === pool.proposalId ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      "Mark Distributed"
-                    )}
-                  </Button>
-                )}
-              </div>
+              {isAdmin && !pool.distributed && (
+                <Button
+                  data-ocid="rewards.confirm_button"
+                  onClick={() => markDistributed(pool.proposalId)}
+                  disabled={marking === pool.proposalId}
+                  className="w-full mt-2 bg-yellow-600/20 hover:bg-yellow-600/40 border border-yellow-600/50 text-yellow-300 font-semibold"
+                >
+                  {marking === pool.proposalId ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Gift className="w-4 h-4 mr-2" />
+                  )}
+                  {marking === pool.proposalId
+                    ? "Distributing..."
+                    : "Distribute Rewards"}
+                </Button>
+              )}
             </div>
           );
         })}
