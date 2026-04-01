@@ -1241,65 +1241,66 @@ export default function App() {
             </div>
           </motion.div>
 
+          {/* Bitty CEO — HOW IT WORKS centered standalone section */}
+          <div className="flex flex-col items-center mt-2 mb-2">
+            {/* Speech bubble above CEO, tail pointing DOWN */}
+            <button
+              onClick={() => setHowItWorksOpen(true)}
+              data-ocid="how_it_works.open_modal_button"
+              type="button"
+              className="relative bg-white border-4 border-black rounded-2xl px-6 py-3 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[4px_4px_0px_#000] mb-0"
+            >
+              <span
+                className="font-black text-black tracking-wider uppercase leading-tight block text-center"
+                style={{
+                  fontFamily: "Impact, Arial Black, sans-serif",
+                  fontSize: "1.6rem",
+                  WebkitTextStroke: "0.5px black",
+                }}
+              >
+                HOW IT WORKS
+              </span>
+              {/* Tail outer (black) pointing DOWN */}
+              <span
+                className="absolute -bottom-[14px] left-1/2 -translate-x-1/2 w-0 h-0"
+                style={{
+                  borderLeft: "12px solid transparent",
+                  borderRight: "12px solid transparent",
+                  borderTop: "14px solid black",
+                }}
+              />
+              {/* Tail inner (white) pointing DOWN */}
+              <span
+                className="absolute -bottom-[11px] left-1/2 -translate-x-1/2 w-0 h-0"
+                style={{
+                  borderLeft: "10px solid transparent",
+                  borderRight: "10px solid transparent",
+                  borderTop: "12px solid white",
+                }}
+              />
+            </button>
+            {/* CEO Character */}
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen(true)}
+              className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200 mt-1"
+              aria-label="How It Works"
+            >
+              <img
+                src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
+                alt="Bitty CEO"
+                className="object-contain"
+                style={{ height: 280 }}
+              />
+            </button>
+          </div>
+
           {/* Balance Section */}
           <section>
-            <div className="flex items-center justify-between mb-5">
+            <div className="mb-5">
               <h2 className="font-heading font-bold text-lg text-foreground tracking-tight">
                 TREASURY BALANCES
               </h2>
-              {/* Bitty CEO + HOW IT WORKS — bubble to the left, CEO to the right */}
-              <div className="flex items-end gap-2" style={{ height: 180 }}>
-                {/* Speech bubble to the LEFT of CEO */}
-                <div className="relative flex items-end pb-8">
-                  <button
-                    onClick={() => setHowItWorksOpen(true)}
-                    data-ocid="how_it_works.open_modal_button"
-                    type="button"
-                    className="relative bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
-                  >
-                    <span
-                      className="font-black text-black text-sm tracking-wider uppercase leading-tight block text-center"
-                      style={{
-                        fontFamily: "Impact, Arial Black, sans-serif",
-                        WebkitTextStroke: "0.5px black",
-                      }}
-                    >
-                      HOW IT WORKS
-                    </span>
-                    {/* Speech bubble tail pointing RIGHT toward CEO */}
-                    <span
-                      className="absolute top-1/2 -right-4 -translate-y-1/2 w-0 h-0"
-                      style={{
-                        borderTop: "8px solid transparent",
-                        borderBottom: "8px solid transparent",
-                        borderLeft: "12px solid black",
-                      }}
-                    />
-                    <span
-                      className="absolute top-1/2 -right-2.5 -translate-y-1/2 w-0 h-0"
-                      style={{
-                        borderTop: "6px solid transparent",
-                        borderBottom: "6px solid transparent",
-                        borderLeft: "9px solid white",
-                      }}
-                    />
-                  </button>
-                </div>
-                {/* CEO Character */}
-                <button
-                  type="button"
-                  onClick={() => setHowItWorksOpen(true)}
-                  className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200"
-                  aria-label="How It Works"
-                >
-                  <img
-                    src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
-                    alt="Bitty CEO"
-                    className="object-contain"
-                    style={{ height: 160 }}
-                  />
-                </button>
-              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
