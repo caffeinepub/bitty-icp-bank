@@ -1245,10 +1245,10 @@ export default function App() {
           <section>
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-heading font-bold text-lg text-foreground tracking-tight">
-                Treasury Balances
+                TREASURY BALANCES
               </h2>
-              {/* Bitty CEO + HOW IT WORKS — replacing refresh button */}
-              <div className="flex items-end gap-2">
+              {/* Bitty CEO + HOW IT WORKS — CEO is tall, bubble floats above his head */}
+              <div className="relative flex items-end" style={{ height: 180 }}>
                 {/* CEO Character */}
                 <button
                   type="button"
@@ -1260,15 +1260,16 @@ export default function App() {
                     src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
                     alt="Bitty CEO"
                     className="object-contain"
-                    style={{ height: 80 }}
+                    style={{ height: 160 }}
                   />
                 </button>
-                {/* Cartoon speech bubble */}
+                {/* Speech bubble above head */}
                 <button
                   onClick={() => setHowItWorksOpen(true)}
                   data-ocid="how_it_works.open_modal_button"
                   type="button"
-                  className="relative bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
+                  className="absolute top-0 left-0 bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
+                  style={{ transform: "translateX(-10%)" }}
                 >
                   <span
                     className="font-black text-black text-sm tracking-wider uppercase leading-tight block text-center"
@@ -1279,21 +1280,21 @@ export default function App() {
                   >
                     HOW IT WORKS
                   </span>
-                  {/* Speech bubble tail pointing left toward CEO */}
+                  {/* Speech bubble tail pointing DOWN toward CEO */}
                   <span
-                    className="absolute -left-4 top-1/2 -translate-y-1/2 w-0 h-0"
+                    className="absolute left-1/2 -bottom-4 -translate-x-1/2 w-0 h-0"
                     style={{
-                      borderTop: "8px solid transparent",
-                      borderBottom: "8px solid transparent",
-                      borderRight: "12px solid black",
+                      borderLeft: "8px solid transparent",
+                      borderRight: "8px solid transparent",
+                      borderTop: "12px solid black",
                     }}
                   />
                   <span
-                    className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-0 h-0"
+                    className="absolute left-1/2 -bottom-2.5 -translate-x-1/2 w-0 h-0"
                     style={{
-                      borderTop: "6px solid transparent",
-                      borderBottom: "6px solid transparent",
-                      borderRight: "9px solid white",
+                      borderLeft: "6px solid transparent",
+                      borderRight: "6px solid transparent",
+                      borderTop: "9px solid white",
                     }}
                   />
                 </button>
@@ -1324,10 +1325,10 @@ export default function App() {
             </div>
           </section>
 
-          {/* NNS Public Neuron Section */}
+          {/* NNS PUBLIC NEURON Section */}
           <section>
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
-              NNS Public Neuron
+              NNS PUBLIC NEURON
             </h2>
             <a
               href="https://dashboard.internetcomputer.org/neuron/2927437143767212939"
@@ -1407,7 +1408,7 @@ export default function App() {
           {/* Future Investment Fund Section */}
           <section data-ocid="fund.section">
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
-              BITTY ON ICP Future Investment Fund
+              BITTY ON ICP FUTURE INVESTMENT FUND
             </h2>
             <a
               href="https://www.icexplorer.io/address/detail/vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae"
