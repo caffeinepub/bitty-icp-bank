@@ -426,3 +426,23 @@ export function useGetVoteAllocations(voteId: bigint | null) {
     staleTime: 30_000,
   });
 }
+
+export function useGetCanisterBalances(canisterId: string) {
+  return useQuery<{ icp: bigint | null; bitty: bigint | null }>({
+    queryKey: ["canisterBalances", canisterId],
+    queryFn: async () => {
+      if (!canisterId.trim()) return { icp: null, bitty: null };
+      const [icp, bitty] = await Promise.allSettled([
+        getICPBalance(canisterId),
+        getBITTYBalance(canisterId),
+      ]);
+      return {
+        icp: icp.status === "fulfilled" ? icp.value : null,
+        bitty: bitty.status === "fulfilled" ? bitty.value : null,
+      };
+    },
+    enabled: !!canisterId.trim(),
+    staleTime: 30_000,
+    retry: 2,
+  });
+}

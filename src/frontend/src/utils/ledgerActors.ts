@@ -61,6 +61,7 @@ async function createAuthenticatedAgent(identity: any) {
 export async function getICPBalance(
   principalText: string,
 ): Promise<bigint | null> {
+  // First try ICRC-1 on-chain query
   try {
     const agent = await createAgent();
     const actor = Actor.createActor(icrc1IdlFactory, {
@@ -74,9 +75,22 @@ export async function getICPBalance(
     });
     return BigInt(balance);
   } catch (e) {
-    console.error("ICP balance fetch failed:", e);
-    return null;
+    console.warn("ICP icrc1 balance fetch failed, trying REST fallback:", e);
   }
+  // Fallback: IC REST API
+  try {
+    const res = await fetch(
+      `https://ic-api.internetcomputer.org/api/v3/accounts/${principalText}`,
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const e8s = data?.balance ?? data?.icp?.e8s ?? data?.e8s ?? null;
+      if (e8s !== null) return BigInt(e8s);
+    }
+  } catch (e2) {
+    console.error("ICP REST balance fetch also failed:", e2);
+  }
+  return null;
 }
 
 export async function getBITTYBalance(

@@ -8,9 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
+  useGetCanisterBalances,
   useGetRewardsPools,
   useGetVoteAllocations,
   useMarkRewardsDistributed,
+  useTokenPrices,
 } from "@/hooks/useQueries";
 import {
   BITTY_LEDGER_ID_EXPORT,
@@ -50,6 +52,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import type { MonthlyVote, RewardsPoolEntry, VoteResult } from "./backend.d";
 import { loadConfig } from "./config";
+import { idlFactory as backendIdlFactory } from "./declarations/backend.did";
 // ─── Share on X helper ────────────────────────────────────────────────────────
 function shareOnX(title: string, status: string) {
   const text = `🗳️ BITTY ON ICP Governance Vote: "${title}" is ${status}!\n\nCast your vote at bittyicpbank.com\n#BITTYICP #ICP #InternetComputer`;
@@ -1601,6 +1604,67 @@ function RewardsSection({
   );
 }
 
+// ─── CanisterRewardsBalance ──────────────────────────────────────────────────
+
+function CanisterRewardsBalance({ canisterId }: { canisterId: string }) {
+  const balances = useGetCanisterBalances(canisterId);
+  const prices = useTokenPrices();
+
+  const icpAmt =
+    balances.data?.icp != null ? Number(balances.data.icp) / 1e8 : null;
+  const bittyAmt =
+    balances.data?.bitty != null ? Number(balances.data.bitty) / 1e8 : null;
+  const icpUsd = prices.data?.icpUsd ?? null;
+  const bittyUsd = prices.data?.bittyUsd ?? null;
+
+  const icpUsdVal = icpAmt != null && icpUsd != null ? icpAmt * icpUsd : null;
+  const bittyUsdVal =
+    bittyAmt != null && bittyUsd != null ? bittyAmt * bittyUsd : null;
+
+  if (!canisterId) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="bg-black/40 border border-yellow-500/20 rounded-xl p-4 text-center">
+        <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+          $ICP Balance
+        </div>
+        <div className="text-yellow-400 font-bold text-xl font-mono">
+          {balances.isLoading
+            ? "Loading…"
+            : icpAmt != null
+              ? icpAmt.toLocaleString(undefined, {
+                  minimumFractionDigits: 4,
+                  maximumFractionDigits: 4,
+                })
+              : "—"}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          {icpUsdVal != null ? `$${icpUsdVal.toFixed(2)} USD` : ""}
+        </div>
+      </div>
+      <div className="bg-black/40 border border-yellow-500/20 rounded-xl p-4 text-center">
+        <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+          $BITTYICP Balance
+        </div>
+        <div className="text-yellow-400 font-bold text-xl font-mono">
+          {balances.isLoading
+            ? "Loading…"
+            : bittyAmt != null
+              ? bittyAmt.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              : "—"}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          {bittyUsdVal != null ? `$${bittyUsdVal.toFixed(4)} USD` : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── RewardsPoolPanel ────────────────────────────────────────────────────────
 
 function RewardsPoolCard({
@@ -2699,7 +2763,7 @@ function CreateProposalForm({
   const [options, setOptions] = useState(["", ""]);
   const [endDateTime, setEndDateTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const activeActor = actor;
+  const activeActor = actor; // uses passed actor prop
 
   function addOption() {
     if (options.length < 6) setOptions([...options, ""]);
@@ -3057,6 +3121,7 @@ export default function VotingPage({
   // Auth state
   const [plugPrincipal, setPlugPrincipal] = useState<string | null>(null);
   const [plugConnecting, setPlugConnecting] = useState(false);
+  const [plugActor, setPlugActor] = useState<any>(null);
 
   // Balance
   const [bittyBalance, setBittyBalance] = useState<number>(0);
@@ -3080,6 +3145,7 @@ export default function VotingPage({
   // Derived
   const iiPrincipal = identity?.getPrincipal().toString() ?? null;
   const principal = iiPrincipal ?? plugPrincipal;
+  const activeActor = plugActor ?? actor;
   const votingPower = Math.floor(bittyBalance / 1000);
   const isSignedIn = !!principal;
 
@@ -3166,6 +3232,17 @@ export default function VotingPage({
       if (connected) {
         const p = await window.ic.plug.agent?.getPrincipal();
         setPlugPrincipal(p?.toString() ?? null);
+        // Create backend actor authenticated with Plug agent
+        try {
+          const cfg = await loadConfig();
+          const pActor = await window.ic.plug.createActor({
+            canisterId: cfg.backend_canister_id,
+            interfaceFactory: backendIdlFactory,
+          });
+          setPlugActor(pActor);
+        } catch (e) {
+          console.warn("Could not create Plug actor:", e);
+        }
       } else {
         toast.error("Plug wallet connection was rejected.");
       }
@@ -3181,6 +3258,7 @@ export default function VotingPage({
       await window.ic?.plug?.disconnect();
     } catch {}
     setPlugPrincipal(null);
+    setPlugActor(null);
   }
 
   function signOut() {
@@ -3434,7 +3512,7 @@ export default function VotingPage({
         {isSignedIn && principal && (
           <MyWalletPanel
             principal={principal}
-            actor={actor}
+            actor={activeActor}
             isPlugUser={!!plugPrincipal}
           />
         )}
@@ -3457,7 +3535,7 @@ export default function VotingPage({
                     vote={latestBitty}
                     principal={principal}
                     votingPower={effectiveVotingPower}
-                    actor={actor}
+                    actor={activeActor}
                     isAdmin={isAdmin}
                     adminPassword={adminPassword}
                   />
@@ -3467,7 +3545,7 @@ export default function VotingPage({
                     vote={latestICP}
                     principal={principal}
                     votingPower={effectiveVotingPower}
-                    actor={actor}
+                    actor={activeActor}
                     isAdmin={isAdmin}
                     adminPassword={adminPassword}
                   />
@@ -3511,7 +3589,7 @@ export default function VotingPage({
                     vote={vote}
                     principal={principal}
                     votingPower={effectiveVotingPower}
-                    actor={actor}
+                    actor={activeActor}
                     isAdmin={isAdmin}
                     adminPassword={adminPassword}
                   />
@@ -3543,7 +3621,7 @@ export default function VotingPage({
               {/* Admin: Create Proposal Form */}
               {isAdmin && (
                 <CreateProposalForm
-                  actor={actor}
+                  actor={activeActor}
                   adminPassword={adminPassword}
                   onCreated={loadVotes}
                 />
@@ -3570,7 +3648,7 @@ export default function VotingPage({
                       proposal={p}
                       principal={principal}
                       votingPower={effectiveVotingPower}
-                      actor={actor}
+                      actor={activeActor}
                       isAdmin={isAdmin}
                       adminPassword={adminPassword}
                       onRefresh={loadVotes}
@@ -3589,7 +3667,7 @@ export default function VotingPage({
                 votes={votes}
                 pools={pools}
                 principal={principal}
-                actor={actor}
+                actor={activeActor}
               />
             )}
 
@@ -3599,7 +3677,7 @@ export default function VotingPage({
                 pools={pools}
                 isAdmin={isAdmin}
                 adminPassword={adminPassword}
-                actor={actor}
+                actor={activeActor}
                 onRefresh={loadVotes}
               />
             )}
@@ -3611,94 +3689,82 @@ export default function VotingPage({
                 customProposals={customProposals}
                 isAdmin={isAdmin}
                 adminPassword={adminPassword}
-                actor={actor}
+                actor={activeActor}
                 onRefresh={loadVotes}
               />
             )}
 
             {/* How It Works */}
-            {/* Internal Rewards Wallet - Enhanced - Admin Only */}
-            {isAdmin && (
-              <section data-ocid="rewards.section">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
-                    <Gift className="h-5 w-5 text-yellow-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-lg text-white tracking-tight">
-                      Internal Rewards Wallet
-                    </h2>
-                    <p className="text-xs text-gray-400">
-                      Receives the losing option's % after each vote
-                      finalization. Distributed to voters based on
-                      winning-option power.
-                    </p>
-                  </div>
-                </div>
-                <RewardsPoolPanel
-                  isAdmin={isAdmin}
-                  adminPassword={adminPassword}
-                  currentUserPrincipal={principal}
-                />
-              </section>
-            )}
-            {/* Canister Deposit Address - Admin Only */}
-            {isAdmin && canisterId && (
+            {/* Canister Wallet - visible to all signed-in users */}
+            {canisterId && (
               <section data-ocid="deposit.section">
-                <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
+                <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-4">
                   <div className="flex items-center gap-2 text-yellow-400">
                     <Wallet className="w-4 h-4 shrink-0" />
                     <h3 className="font-bold text-sm uppercase tracking-widest">
-                      Canister Deposit Address
+                      Canister Rewards Wallet
                     </h3>
                   </div>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Before each vote cycle is finalized, send tokens here so the
-                    canister can automatically execute the distribution. This is
-                    the canister&#39;s own wallet — visible to all for
-                    verification.
+                    This is the canister's on-chain wallet. It receives the
+                    rewards pool after each vote and executes distributions
+                    automatically.
                   </p>
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">
-                      Canister Principal ID
-                    </p>
-                    <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
-                      <span className="text-yellow-300 text-xs font-mono flex-1 break-all">
-                        {canisterId}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(canisterId);
-                          toast.success("Canister ID copied!");
-                        }}
-                        className="shrink-0 text-gray-400 hover:text-yellow-400 transition-colors"
-                        title="Copy canister ID"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="bg-black/30 rounded-lg p-2 border border-white/10">
-                        <p className="text-yellow-400 font-semibold mb-0.5">
-                          For{" "}
-                        </p>
-                        <p className="text-gray-400">
-                          Send to the Principal ID above via the BITTYICP token
-                          transfer (ICRC-1)
-                        </p>
+                  <CanisterRewardsBalance canisterId={canisterId} />
+                  {isAdmin && (
+                    <div className="space-y-2 pt-2 border-t border-yellow-500/20">
+                      <p className="text-xs text-yellow-400 font-bold uppercase tracking-wider">
+                        ADMIN ONLY — Canister Deposit Address
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Before each vote cycle is finalized, send tokens here so
+                        the canister can automatically execute the distribution.
+                      </p>
+                      <div className="flex items-center gap-2 bg-black/40 rounded-xl border border-yellow-500/20 px-3 py-2">
+                        <span className="text-yellow-300 text-xs font-mono flex-1 break-all">
+                          {canisterId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(canisterId);
+                            toast.success("Canister ID copied!");
+                          }}
+                          className="shrink-0 text-gray-400 hover:text-yellow-400 transition-colors"
+                          title="Copy canister ID"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="bg-black/30 rounded-lg p-2 border border-white/10">
-                        <p className="text-yellow-400 font-semibold mb-0.5">
-                          For{" "}
-                        </p>
-                        <p className="text-gray-400">
-                          Send to the Principal ID above — use NNS or your ICP
-                          wallet&#39;s send function
-                        </p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-black/30 rounded-lg p-2 border border-white/10">
+                          <p className="text-yellow-400 font-bold mb-1">
+                            For $BITTYICP
+                          </p>
+                          <p className="text-gray-200 text-xs">
+                            Send to the Principal ID above via BITTYICP token
+                            transfer (ICRC-1)
+                          </p>
+                        </div>
+                        <div className="bg-black/30 rounded-lg p-2 border border-white/10">
+                          <p className="text-yellow-400 font-bold mb-1">
+                            For $ICP
+                          </p>
+                          <p className="text-gray-200 text-xs">
+                            Send to the Principal ID above — use NNS or your ICP
+                            wallet
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+                  {isAdmin && (
+                    <RewardsPoolPanel
+                      isAdmin={isAdmin}
+                      adminPassword={adminPassword}
+                      currentUserPrincipal={principal}
+                    />
+                  )}
                 </div>
               </section>
             )}
