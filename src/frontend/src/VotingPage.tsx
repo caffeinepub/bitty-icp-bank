@@ -1860,7 +1860,7 @@ function RewardsPoolCard({
           ) : (
             <Gift className="h-4 w-4 mr-2" />
           )}
-          Mark as Distributed
+          Distribute Rewards
         </Button>
       )}
     </div>
@@ -1878,8 +1878,9 @@ function RewardsPoolPanel({
 }) {
   const { actor } = useActor();
   const rewardsPools = useGetRewardsPools();
-  const markDistributed = useMarkRewardsDistributed();
+
   const [expandedPool, setExpandedPool] = useState<string | null>(null);
+  const [distributing, setDistributing] = useState(false);
 
   const undistributed = (rewardsPools.data ?? []).filter(
     (p: any) => !p.distributed,
@@ -1905,20 +1906,29 @@ function RewardsPoolPanel({
   }
 
   async function handleMarkDistributed(voteId: bigint) {
+    if (!actor) return;
+    setDistributing(true);
     try {
-      const a = actor as any;
-      const res = await markDistributed.mutateAsync({
-        password: adminPassword,
+      const result = await (actor as any).distributeRewards(
+        adminPassword,
         voteId,
-        actor: a,
-      });
-      if (res) {
-        toast.success("Marked as distributed!");
+      );
+      if (result?.success) {
+        toast.success(
+          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
+        );
+        if (result.errors && result.errors.length > 0) {
+          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
+        }
+        rewardsPools.refetch();
       } else {
-        toast.error("Failed — check password");
+        const errs = result?.errors?.join(", ") ?? "Unknown error";
+        toast.error(`Distribution failed: ${errs}`);
       }
-    } catch {
-      toast.error("Failed to mark as distributed");
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setDistributing(false);
     }
   }
 
@@ -1939,7 +1949,7 @@ function RewardsPoolPanel({
               expandedPool={expandedPool}
               setExpandedPool={setExpandedPool}
               markDistributed={handleMarkDistributed}
-              markDistributedPending={markDistributed.isPending}
+              markDistributedPending={distributing}
             />
           ))}
         </div>
@@ -1959,7 +1969,7 @@ function RewardsPoolPanel({
               expandedPool={expandedPool}
               setExpandedPool={setExpandedPool}
               markDistributed={handleMarkDistributed}
-              markDistributedPending={markDistributed.isPending}
+              markDistributedPending={distributing}
             />
           ))}
         </div>
@@ -3207,8 +3217,14 @@ export default function VotingPage({
     try {
       const [allVotes, allPools, customProps, customPoolsData] =
         await Promise.all([
-          a.getAllVotes(),
-          a.getRewardsPools(),
+          a.getAllVotes().catch((e: unknown) => {
+            console.error("getAllVotes failed:", e);
+            return [];
+          }),
+          a.getRewardsPools().catch((e: unknown) => {
+            console.error("getRewardsPools failed:", e);
+            return [];
+          }),
           a.getCustomProposals().catch(() => []),
           a.getCustomRewardsPools().catch(() => []),
         ]);
@@ -3216,7 +3232,8 @@ export default function VotingPage({
       setPools(allPools);
       setCustomProposals(customProps as CustomProposal[]);
       setCustomPools(customPoolsData as CustomRewardsPoolEntry[]);
-    } catch {
+    } catch (e) {
+      console.error("loadVotes failed:", e);
     } finally {
       setLoadingVotes(false);
     }

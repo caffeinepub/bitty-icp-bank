@@ -1261,4 +1261,19 @@ actor {
   };
 
 
+  // Auto-seed monthly votes on fresh deploy or upgrade
+  func seedCurrentMonthlyVotes() {
+    let nowNs = Time.now();
+    let nowSecs = nowNs / 1_000_000_000;
+    let (year, month, _) = dateFromSeconds(nowSecs);
+    ensureVotesForMonthYear(month, year);
+    let nextMonth = if (month == 12) 1 else month + 1;
+    let nextYear = if (month == 12) year + 1 else year;
+    ensureVotesForMonthYear(nextMonth, nextYear);
+  };
+
+  system func postupgrade() {
+    seedCurrentMonthlyVotes();
+  };
+
 };

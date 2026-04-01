@@ -60,6 +60,48 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
+export type VoteType = { ICP: null } | { BITTYICP: null };
+export interface CustomOptionAlloc {
+    optionIndex: bigint;
+    pct: bigint;
+}
+export interface CustomProposal {
+    id: bigint;
+    title: string;
+    description: string;
+    voteType: VoteType;
+    options: string[];
+    openTime: bigint;
+    closeTime: bigint;
+    isFinalized: boolean;
+    totalVoteAmount: string;
+}
+export interface CustomVoteAllocation {
+    proposalId: bigint;
+    voterPrincipal: string;
+    allocations: CustomOptionAlloc[];
+    votingPower: bigint;
+}
+export interface CustomVoteResult {
+    optionLabel: string;
+    optionIndex: bigint;
+    totalWeightedPct: bigint;
+    voterCount: bigint;
+}
+export interface CustomRewardsPoolEntry {
+    proposalId: bigint;
+    voteType: VoteType;
+    losingOptionLabel: string;
+    losingOptionPct: bigint;
+    poolAmount: string;
+    distributed: boolean;
+}
+export interface DistributeResult {
+    success: boolean;
+    transferCount: bigint;
+    errors: string[];
+}
+
 export interface backendInterface {
     addAnnouncement(password: string, title: string, body: string): Promise<Announcement | null>;
     addChatMessage(voteId: bigint, author: string, message: string): Promise<ChatMessage | null>;
@@ -101,4 +143,16 @@ export interface backendInterface {
     updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
     getIcpUsdPrice(): Promise<string>;
     getBittyUsdPrice(): Promise<string>;
+    createCustomProposal(password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint): Promise<CustomProposal | null>;
+    getCustomProposals(): Promise<Array<CustomProposal>>;
+    castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: CustomOptionAlloc[], votingPower: bigint): Promise<boolean>;
+    hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    getCustomVoteAllocations(proposalId: bigint): Promise<Array<CustomVoteAllocation>>;
+    getCustomVoteResults(proposalId: bigint): Promise<Array<CustomVoteResult>>;
+    setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean>;
+    finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean>;
+    getCustomRewardsPools(): Promise<Array<CustomRewardsPoolEntry>>;
+    markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
+    distributeRewards(password: string, voteId: bigint): Promise<DistributeResult>;
+    distributeCustomRewards(password: string, proposalId: bigint): Promise<DistributeResult>;
 }
