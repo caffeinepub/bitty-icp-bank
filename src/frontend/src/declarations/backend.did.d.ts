@@ -71,6 +71,13 @@ export interface CustomRewardsPoolEntry {
   proposalId: bigint; voteType: VoteType; losingOptionLabel: string; losingOptionPct: bigint; poolAmount: string; distributed: boolean;
 }
 
+
+export type DistributeResult = {
+  success: boolean;
+  transferCount: bigint;
+  errors: Array<string>;
+};
+
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addAnnouncement' : ActorMethod<
@@ -118,6 +125,7 @@ export interface _SERVICE {
   getVoteResults: ActorMethod<[bigint], VoteResult[]>;
   setVoteAmount: ActorMethod<[string, bigint, string], boolean>;
   finalizeVote: ActorMethod<[string, bigint], boolean>;
+  distributeRewards: ActorMethod<[string, bigint], DistributeResult>;
   markRewardsDistributed: ActorMethod<[string, bigint], boolean>;
   getRewardsPools: ActorMethod<[], RewardsPoolEntry[]>;
   setNeuronTopupAddress: ActorMethod<[string, string], boolean>;
@@ -132,6 +140,7 @@ export interface _SERVICE {
   setCustomProposalAmount: ActorMethod<[string, bigint, string], boolean>;
   finalizeCustomProposal: ActorMethod<[string, bigint], boolean>;
   getCustomRewardsPools: ActorMethod<[], CustomRewardsPoolEntry[]>;
+  distributeCustomRewards: ActorMethod<[string, bigint], DistributeResult>;
   markCustomRewardsDistributed: ActorMethod<[string, bigint], boolean>;
   initWalletVerification: ActorMethod<[string], { ok: bigint } | { err: string }>;
   confirmWalletVerification: ActorMethod<[string], { ok: null } | { err: string }>;

@@ -1524,12 +1524,21 @@ function RewardsSection({
     if (!actor) return;
     setMarking(voteId);
     try {
-      const ok = await actor.markRewardsDistributed(adminPassword, voteId);
-      if (ok) {
-        toast.success("Rewards marked as distributed!");
+      const result = await (actor as any).distributeRewards(
+        adminPassword,
+        voteId,
+      );
+      if (result?.success) {
+        toast.success(
+          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
+        );
+        if (result.errors && result.errors.length > 0) {
+          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
+        }
         onRefresh();
       } else {
-        toast.error("Failed to mark distributed.");
+        const errs = result?.errors?.join(", ") ?? "Unknown error";
+        toast.error(`Distribution failed: ${errs}`);
       }
     } catch (e: any) {
       toast.error(`Error: ${e?.message}`);
@@ -2513,14 +2522,22 @@ function CustomProposalCard({
     if (!actor) return;
     setMarking(true);
     try {
-      const ok = await (actor as any).markCustomRewardsDistributed(
+      const result = await (actor as any).distributeCustomRewards(
         adminPassword,
         proposal.id,
       );
-      if (ok) {
-        toast.success("Marked as distributed!");
+      if (result?.success) {
+        toast.success(
+          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
+        );
+        if (result.errors && result.errors.length > 0) {
+          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
+        }
         onRefresh();
-      } else toast.error("Failed to mark distributed.");
+      } else {
+        const errs = result?.errors?.join(", ") ?? "Unknown error";
+        toast.error(`Distribution failed: ${errs}`);
+      }
     } catch (e: any) {
       toast.error(`Error: ${e?.message}`);
     } finally {
@@ -3006,14 +3023,22 @@ function CustomRewardsBanner({
     if (!actor) return;
     setMarking(proposalId);
     try {
-      const ok = await (actor as any).markCustomRewardsDistributed(
+      const result = await (actor as any).distributeCustomRewards(
         adminPassword,
         proposalId,
       );
-      if (ok) {
-        toast.success("Marked as distributed!");
+      if (result?.success) {
+        toast.success(
+          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
+        );
+        if (result.errors && result.errors.length > 0) {
+          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
+        }
         onRefresh();
-      } else toast.error("Failed to mark distributed.");
+      } else {
+        const errs = result?.errors?.join(", ") ?? "Unknown error";
+        toast.error(`Distribution failed: ${errs}`);
+      }
     } catch (e: any) {
       toast.error(`Error: ${e?.message}`);
     } finally {
@@ -3135,12 +3160,8 @@ export default function VotingPage({
   const [customPools, setCustomPools] = useState<CustomRewardsPoolEntry[]>([]);
 
   // Canister deposit address
-  const [canisterId, setCanisterId] = useState<string>("");
-  useEffect(() => {
-    loadConfig()
-      .then((cfg) => setCanisterId(cfg.backend_canister_id))
-      .catch(() => {});
-  }, []);
+  // Hardwired to the live production canister that holds the rewards funds
+  const [canisterId] = useState<string>("vd5sn-eyaaa-aaaae-qjqyq-cai");
 
   // Derived
   const iiPrincipal = identity?.getPrincipal().toString() ?? null;

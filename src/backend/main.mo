@@ -688,6 +688,106 @@ actor {
     true;
   };
 
+  // Helper: parse Nat from Text (digits only)
+  func parseNatText(t : Text) : Nat {
+    var n : Nat = 0;
+    let digits = ['0','1','2','3','4','5','6','7','8','9'];
+    for (c in t.chars()) {
+      var idx : Nat = 0;
+      var found = false;
+      for (d in digits.vals()) {
+        if (d == c and not found) { n := n * 10 + idx; found := true };
+        idx += 1;
+      };
+    };
+    n;
+  };
+
+  // Real on-chain reward distribution for monthly votes
+  public shared func distributeRewards(password : Text, voteId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
+    let poolOpt = rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId == voteId }).values().next();
+    switch (poolOpt) {
+      case (null) { return { success = false; transferCount = 0; errors = ["Pool not found"] } };
+      case (?pool) {
+        if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
+        let totalPool = parseNatText(pool.poolAmount);
+        if (totalPool == 0 or pool.losingOptionPct == 0) {
+          rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+            if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+          });
+          return { success = true; transferCount = 0; errors = [] };
+        };
+        let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+        let allocs = voteAllocations.filter(func(a : VoteAllocation) : Bool { a.voteId == voteId });
+        let labels = getOptionsForVote(voteId);
+        type VoterShare = { principal : Text; eligiblePower : Nat };
+        var voterShares : [VoterShare] = [];
+        var totalEligible : Nat = 0;
+        for (a in allocs.values()) {
+          let losingPct = if (pool.losingOptionLabel == labels.0) { a.pctA }
+                          else if (pool.losingOptionLabel == labels.1) { a.pctB }
+                          else { a.pctC };
+          let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
+          let eligible = a.votingPower * nonLosingPct / 100;
+          if (eligible > 0) {
+            voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
+            totalEligible += eligible;
+          };
+        };
+        if (totalEligible == 0) {
+          rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+            if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+          });
+          return { success = true; transferCount = 0; errors = [] };
+        };
+        let ledgerId = switch (pool.voteType) {
+          case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+          case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+        };
+        let ledger = actor(ledgerId) : actor {
+          icrc1_transfer : ({
+            from_subaccount : ?Blob;
+            to : { owner : Principal; subaccount : ?Blob };
+            amount : Nat;
+            fee : ?Nat;
+            memo : ?Blob;
+            created_at_time : ?Nat64;
+          }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+        };
+        let fee : Nat = 10000;
+        var transferCount = 0;
+        var errors : [Text] = [];
+        for (vs in voterShares.values()) {
+          let amount = rewardsTotal * vs.eligiblePower / totalEligible;
+          if (amount > fee) {
+            try {
+              let result = await ledger.icrc1_transfer({
+                from_subaccount = null;
+                to = { owner = Principal.fromText(vs.principal); subaccount = null };
+                amount = amount - fee;
+                fee = ?fee;
+                memo = null;
+                created_at_time = null;
+              });
+              switch (result) {
+                case (#Ok(_)) { transferCount += 1 };
+                case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
+              };
+            } catch (_) {
+              errors := errors.concat(["Exception for " # vs.principal]);
+            };
+          };
+        };
+        rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+          if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+        });
+        { success = true; transferCount; errors };
+      };
+    };
+  };
+
+
   public query func getRewardsPools() : async [RewardsPoolEntry] {
     rewardsPools;
   };
@@ -884,6 +984,109 @@ actor {
     });
     true;
   };
+
+  // Real on-chain reward distribution for custom proposals
+  public shared func distributeCustomRewards(password : Text, proposalId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
+    let poolOpt = customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId == proposalId }).values().next();
+    switch (poolOpt) {
+      case (null) { return { success = false; transferCount = 0; errors = ["Pool not found"] } };
+      case (?pool) {
+        if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
+        let totalPool = parseNatText(pool.poolAmount);
+        if (totalPool == 0 or pool.losingOptionPct == 0) {
+          customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+            if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+          });
+          return { success = true; transferCount = 0; errors = [] };
+        };
+        let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+        // Find losing option index for this proposal
+        let proposalOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
+        var losingOptionIndex : ?Nat = null;
+        switch (proposalOpt) {
+          case (null) {};
+          case (?p) {
+            var idx : Nat = 0;
+            for (opt in p.options.vals()) {
+              if (opt == pool.losingOptionLabel) { losingOptionIndex := ?idx };
+              idx += 1;
+            };
+          };
+        };
+        let allocs = customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
+        type VoterShare = { principal : Text; eligiblePower : Nat };
+        var voterShares : [VoterShare] = [];
+        var totalEligible : Nat = 0;
+        for (a in allocs.values()) {
+          var losingPct : Nat = 0;
+          switch (losingOptionIndex) {
+            case (null) {};
+            case (?li) {
+              for (alloc in a.allocations.vals()) {
+                if (alloc.optionIndex == li) { losingPct := alloc.pct };
+              };
+            };
+          };
+          let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
+          let eligible = a.votingPower * nonLosingPct / 100;
+          if (eligible > 0) {
+            voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
+            totalEligible += eligible;
+          };
+        };
+        if (totalEligible == 0) {
+          customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+            if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+          });
+          return { success = true; transferCount = 0; errors = [] };
+        };
+        let ledgerId = switch (pool.voteType) {
+          case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+          case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+        };
+        let ledger = actor(ledgerId) : actor {
+          icrc1_transfer : ({
+            from_subaccount : ?Blob;
+            to : { owner : Principal; subaccount : ?Blob };
+            amount : Nat;
+            fee : ?Nat;
+            memo : ?Blob;
+            created_at_time : ?Nat64;
+          }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+        };
+        let fee : Nat = 10000;
+        var transferCount = 0;
+        var errors : [Text] = [];
+        for (vs in voterShares.values()) {
+          let amount = rewardsTotal * vs.eligiblePower / totalEligible;
+          if (amount > fee) {
+            try {
+              let result = await ledger.icrc1_transfer({
+                from_subaccount = null;
+                to = { owner = Principal.fromText(vs.principal); subaccount = null };
+                amount = amount - fee;
+                fee = ?fee;
+                memo = null;
+                created_at_time = null;
+              });
+              switch (result) {
+                case (#Ok(_)) { transferCount += 1 };
+                case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
+              };
+            } catch (_) {
+              errors := errors.concat(["Exception for " # vs.principal]);
+            };
+          };
+        };
+        customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+          if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+        });
+        { success = true; transferCount; errors };
+      };
+    };
+  };
+
 
   //------------------------------ Community Chat ------------------------------
 
