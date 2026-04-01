@@ -43,7 +43,6 @@ import {
   LogOut,
   Pencil,
   Plus,
-  RefreshCw,
   ShieldCheck,
   Trash2,
   TrendingUp,
@@ -281,15 +280,19 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       toast.error("Title and body are required");
       return;
     }
-    await addAnn.mutateAsync({
-      password,
-      title: annTitle.trim(),
-      body: annBody.trim(),
-      actor,
-    });
-    toast.success("Announcement posted!");
-    setAnnTitle("");
-    setAnnBody("");
+    try {
+      await addAnn.mutateAsync({
+        password,
+        title: annTitle.trim(),
+        body: annBody.trim(),
+        actor,
+      });
+      toast.success("Announcement posted!");
+      setAnnTitle("");
+      setAnnBody("");
+    } catch (e: any) {
+      toast.error(`Failed to post announcement: ${e?.message ?? String(e)}`);
+    }
   }
 
   async function handleUpdateAnnouncement(id: bigint) {
@@ -1006,7 +1009,7 @@ export default function App() {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const qc = useQueryClient();
+  const _qc = useQueryClient();
 
   const { actor } = useActor();
   if (actor) setCachedActor(actor);
@@ -1041,16 +1044,6 @@ export default function App() {
       setTapCount(0);
       tapTimerRef.current = null;
     }, 3000);
-  }
-
-  function handleRefresh() {
-    qc.invalidateQueries({ queryKey: ["liveBalances"] });
-    qc.invalidateQueries({ queryKey: ["manualBalances"] });
-    qc.invalidateQueries({ queryKey: ["announcements"] });
-    qc.invalidateQueries({ queryKey: ["fundBalance"] });
-    qc.invalidateQueries({ queryKey: ["neuronStake"] });
-    qc.invalidateQueries({ queryKey: ["tokenPrices"] });
-    toast.success("Refreshing balances...");
   }
 
   function handleLoginSuccess(pw: string) {
@@ -1248,80 +1241,63 @@ export default function App() {
             </div>
           </motion.div>
 
-          {/* Bitty CEO + HOW IT WORKS speech bubble — free-floating below the card */}
-          <div className="flex flex-col items-center mt-2">
-            {/* Cartoon speech bubble */}
-            <button
-              onClick={() => setHowItWorksOpen(true)}
-              data-ocid="how_it_works.open_modal_button"
-              type="button"
-              className="relative mb-2 bg-white border-4 border-black rounded-2xl px-4 py-2 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[4px_4px_0px_#000]"
-              style={{ minWidth: 150 }}
-            >
-              <span
-                className="font-black text-black text-base tracking-wider uppercase leading-tight block text-center"
-                style={{
-                  fontFamily: "Impact, Arial Black, sans-serif",
-                  WebkitTextStroke: "0.5px black",
-                }}
-              >
-                HOW IT WORKS
-              </span>
-              {/* Speech bubble tail pointing down */}
-              <span
-                className="absolute left-1/2 -translate-x-1/2 -bottom-4 w-0 h-0"
-                style={{
-                  borderLeft: "10px solid transparent",
-                  borderRight: "10px solid transparent",
-                  borderTop: "14px solid black",
-                }}
-              />
-              <span
-                className="absolute left-1/2 -translate-x-1/2 -bottom-2.5 w-0 h-0"
-                style={{
-                  borderLeft: "8px solid transparent",
-                  borderRight: "8px solid transparent",
-                  borderTop: "11px solid white",
-                }}
-              />
-            </button>
-            {/* CEO Character — clickable */}
-            <button
-              type="button"
-              onClick={() => setHowItWorksOpen(true)}
-              className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200"
-              aria-label="How It Works"
-            >
-              <img
-                src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
-                alt="Bitty CEO"
-                className="object-contain"
-                style={{ height: 220, marginTop: 10 }}
-              />
-            </button>
-          </div>
-
           {/* Balance Section */}
           <section>
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-heading font-bold text-lg text-foreground tracking-tight">
                 Treasury Balances
               </h2>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={liveBalances.isFetching}
-                className="border-border/40 text-muted-foreground hover:text-foreground"
-                data-ocid="balances.refresh_button"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 mr-1 ${
-                    liveBalances.isFetching ? "animate-spin" : ""
-                  }`}
-                />
-                Refresh
-              </Button>
+              {/* Bitty CEO + HOW IT WORKS — replacing refresh button */}
+              <div className="flex items-end gap-2">
+                {/* CEO Character */}
+                <button
+                  type="button"
+                  onClick={() => setHowItWorksOpen(true)}
+                  className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200"
+                  aria-label="How It Works"
+                >
+                  <img
+                    src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
+                    alt="Bitty CEO"
+                    className="object-contain"
+                    style={{ height: 80 }}
+                  />
+                </button>
+                {/* Cartoon speech bubble */}
+                <button
+                  onClick={() => setHowItWorksOpen(true)}
+                  data-ocid="how_it_works.open_modal_button"
+                  type="button"
+                  className="relative bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
+                >
+                  <span
+                    className="font-black text-black text-sm tracking-wider uppercase leading-tight block text-center"
+                    style={{
+                      fontFamily: "Impact, Arial Black, sans-serif",
+                      WebkitTextStroke: "0.5px black",
+                    }}
+                  >
+                    HOW IT WORKS
+                  </span>
+                  {/* Speech bubble tail pointing left toward CEO */}
+                  <span
+                    className="absolute -left-4 top-1/2 -translate-y-1/2 w-0 h-0"
+                    style={{
+                      borderTop: "8px solid transparent",
+                      borderBottom: "8px solid transparent",
+                      borderRight: "12px solid black",
+                    }}
+                  />
+                  <span
+                    className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-0 h-0"
+                    style={{
+                      borderTop: "6px solid transparent",
+                      borderBottom: "6px solid transparent",
+                      borderRight: "9px solid white",
+                    }}
+                  />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1518,7 +1494,7 @@ export default function App() {
           {/* Games & Development Wallet */}
           <section data-ocid="games.section">
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
-              Games &amp; Development Wallet
+              DEVELOPMENTS WALLET
             </h2>
             <a
               href="https://www.icexplorer.io/address/detail/slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe"
