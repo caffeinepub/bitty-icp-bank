@@ -53,6 +53,27 @@ import { Toaster, toast } from "sonner";
 import type { MonthlyVote, RewardsPoolEntry, VoteResult } from "./backend.d";
 import { loadConfig } from "./config";
 import { idlFactory as backendIdlFactory } from "./declarations/backend.did";
+// ─── E8s conversion helpers ───────────────────────────────────────────────────
+const E8S = 100_000_000;
+function toE8sString(humanAmount: string): string {
+  const n = Number.parseFloat(humanAmount);
+  if (Number.isNaN(n) || n <= 0) return "0";
+  return Math.round(n * E8S).toString();
+}
+function fromE8s(raw: string | bigint): number {
+  const n =
+    typeof raw === "bigint" ? Number(raw) : Number.parseFloat(raw as string);
+  if (Number.isNaN(n)) return 0;
+  return n / E8S;
+}
+function formatE8sAmount(raw: string | bigint, decimals = 4): string {
+  return (
+    fromE8s(raw)
+      .toFixed(decimals)
+      .replace(/\.?0+$/, "") || "0"
+  );
+}
+
 // ─── Share on X helper ────────────────────────────────────────────────────────
 function shareOnX(title: string, status: string) {
   const text = `🗳️ BITTY ON ICP Governance Vote: "${title}" is ${status}!\n\nCast your vote at bittyicpbank.com\n#BITTYICP #ICP #InternetComputer`;
@@ -1239,7 +1260,7 @@ function VoteCard({
       const ok = await actor.setVoteAmount(
         adminPassword,
         vote.id,
-        voteAmountInput.trim(),
+        toE8sString(voteAmountInput.trim()),
       );
       if (ok) toast.success("Vote amount saved!");
       else toast.error("Failed to save amount.");
@@ -1299,7 +1320,8 @@ function VoteCard({
           </p>
           {vote.totalVoteAmount && vote.totalVoteAmount !== "0" && (
             <p className="text-xs text-yellow-500 mt-1">
-              Voting on: {vote.totalVoteAmount} {isICP ? "ICP" : "BITTYICP"}
+              Voting on: {formatE8sAmount(vote.totalVoteAmount)}{" "}
+              {isICP ? "ICP" : "BITTYICP"}
             </p>
           )}
         </div>
@@ -1574,7 +1596,10 @@ function RewardsSection({
                 {Number(p.losingOptionPct)}%)
               </p>
               <p className="text-xs text-gray-400">
-                Pool amount: <span className="text-white">{p.poolAmount}</span>
+                Pool amount:{" "}
+                <span className="text-white">
+                  {formatE8sAmount(p.poolAmount)}
+                </span>
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -1735,7 +1760,7 @@ function RewardsPoolCard({
     : 0;
   const myShare =
     totalWinningPower > 0 ? myWinningPower / totalWinningPower : 0;
-  const poolAmountNum = Number.parseFloat(pool.poolAmount as string) || 0;
+  const poolAmountNum = fromE8s(pool.poolAmount as string);
   const myRewardEstimate = myShare * poolAmountNum * (losingPct / 100);
 
   return (
@@ -1782,7 +1807,9 @@ function RewardsPoolCard({
         <div className="bg-black/30 rounded-lg p-3">
           <div className="text-xs text-gray-400 mb-1">Pool Amount</div>
           <div className="font-semibold text-yellow-400 font-mono text-sm">
-            {losingPct}% of {pool.poolAmount || "TBD"} {voteTypeLabel}
+            {losingPct}% of{" "}
+            {pool.poolAmount ? formatE8sAmount(pool.poolAmount) : "TBD"}{" "}
+            {voteTypeLabel}
           </div>
         </div>
       </div>
@@ -2012,7 +2039,8 @@ function PublicRewardsBanner({ pools }: { pools: RewardsPoolEntry[] }) {
                   Total distribution rewards:{" "}
                   <span className="text-yellow-300 font-semibold">
                     {Number(p.losingOptionPct)}% of{" "}
-                    {p.poolAmount || "vote pool"} {tokenLabel}
+                    {p.poolAmount ? formatE8sAmount(p.poolAmount) : "vote pool"}{" "}
+                    {tokenLabel}
                   </span>
                 </p>
               </div>
@@ -2151,9 +2179,7 @@ function MyRewardsPanel({
             const losingPct = pool ? 100 - winningPct : 0;
 
             // Estimate reward (if pool data available)
-            const poolAmountNum = pool
-              ? Number.parseFloat(pool.poolAmount as string) || 0
-              : 0;
+            const poolAmountNum = pool ? fromE8s(pool.poolAmount as string) : 0;
 
             // Month display
             const monthNames = [
@@ -2423,7 +2449,9 @@ function CustomProposalCard({
   const [hasVoted, setHasVoted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [tokenAmountInput, setTokenAmountInput] = useState(
-    proposal.totalVoteAmount || "",
+    proposal.totalVoteAmount && proposal.totalVoteAmount !== "0"
+      ? formatE8sAmount(proposal.totalVoteAmount)
+      : "",
   );
   const [savingAmount, setSavingAmount] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -2496,7 +2524,7 @@ function CustomProposalCard({
       const ok = await (actor as any).setCustomProposalAmount(
         adminPassword,
         proposal.id,
-        tokenAmountInput,
+        toE8sString(tokenAmountInput),
       );
       if (ok) {
         toast.success("Token amount saved!");
@@ -2621,7 +2649,7 @@ function CustomProposalCard({
           )}
           {proposal.totalVoteAmount && proposal.totalVoteAmount !== "0" && (
             <span className="ml-auto text-yellow-400 font-semibold">
-              {proposal.totalVoteAmount} {voteTypeBadge}
+              {formatE8sAmount(proposal.totalVoteAmount)} {voteTypeBadge}
             </span>
           )}
         </div>
@@ -3096,13 +3124,15 @@ function CustomRewardsBanner({
                   {isAdmin ? (
                     <p className="text-xs text-gray-400">
                       Pool:{" "}
-                      <span className="text-white">{pool.poolAmount}</span>
+                      <span className="text-white">
+                        {formatE8sAmount(pool.poolAmount)}
+                      </span>
                     </p>
                   ) : (
                     <p className="text-xs text-gray-400">
                       Total Distribution Pool:{" "}
                       <span className="text-white">
-                        {pool.poolAmount} {voteTypeBadge}
+                        {formatE8sAmount(pool.poolAmount)} {voteTypeBadge}
                       </span>
                     </p>
                   )}
