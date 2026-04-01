@@ -1247,8 +1247,44 @@ export default function App() {
               <h2 className="font-heading font-bold text-lg text-foreground tracking-tight">
                 TREASURY BALANCES
               </h2>
-              {/* Bitty CEO + HOW IT WORKS — CEO is tall, bubble floats above his head */}
-              <div className="relative flex items-end" style={{ height: 180 }}>
+              {/* Bitty CEO + HOW IT WORKS — bubble to the left, CEO to the right */}
+              <div className="flex items-end gap-2" style={{ height: 180 }}>
+                {/* Speech bubble to the LEFT of CEO */}
+                <div className="relative flex items-end pb-8">
+                  <button
+                    onClick={() => setHowItWorksOpen(true)}
+                    data-ocid="how_it_works.open_modal_button"
+                    type="button"
+                    className="relative bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
+                  >
+                    <span
+                      className="font-black text-black text-sm tracking-wider uppercase leading-tight block text-center"
+                      style={{
+                        fontFamily: "Impact, Arial Black, sans-serif",
+                        WebkitTextStroke: "0.5px black",
+                      }}
+                    >
+                      HOW IT WORKS
+                    </span>
+                    {/* Speech bubble tail pointing RIGHT toward CEO */}
+                    <span
+                      className="absolute top-1/2 -right-4 -translate-y-1/2 w-0 h-0"
+                      style={{
+                        borderTop: "8px solid transparent",
+                        borderBottom: "8px solid transparent",
+                        borderLeft: "12px solid black",
+                      }}
+                    />
+                    <span
+                      className="absolute top-1/2 -right-2.5 -translate-y-1/2 w-0 h-0"
+                      style={{
+                        borderTop: "6px solid transparent",
+                        borderBottom: "6px solid transparent",
+                        borderLeft: "9px solid white",
+                      }}
+                    />
+                  </button>
+                </div>
                 {/* CEO Character */}
                 <button
                   type="button"
@@ -1261,41 +1297,6 @@ export default function App() {
                     alt="Bitty CEO"
                     className="object-contain"
                     style={{ height: 160 }}
-                  />
-                </button>
-                {/* Speech bubble above head */}
-                <button
-                  onClick={() => setHowItWorksOpen(true)}
-                  data-ocid="how_it_works.open_modal_button"
-                  type="button"
-                  className="absolute top-0 left-0 bg-white border-4 border-black rounded-2xl px-3 py-1.5 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[3px_3px_0px_#000]"
-                  style={{ transform: "translateX(-10%)" }}
-                >
-                  <span
-                    className="font-black text-black text-sm tracking-wider uppercase leading-tight block text-center"
-                    style={{
-                      fontFamily: "Impact, Arial Black, sans-serif",
-                      WebkitTextStroke: "0.5px black",
-                    }}
-                  >
-                    HOW IT WORKS
-                  </span>
-                  {/* Speech bubble tail pointing DOWN toward CEO */}
-                  <span
-                    className="absolute left-1/2 -bottom-4 -translate-x-1/2 w-0 h-0"
-                    style={{
-                      borderLeft: "8px solid transparent",
-                      borderRight: "8px solid transparent",
-                      borderTop: "12px solid black",
-                    }}
-                  />
-                  <span
-                    className="absolute left-1/2 -bottom-2.5 -translate-x-1/2 w-0 h-0"
-                    style={{
-                      borderLeft: "6px solid transparent",
-                      borderRight: "6px solid transparent",
-                      borderTop: "9px solid white",
-                    }}
                   />
                 </button>
               </div>
