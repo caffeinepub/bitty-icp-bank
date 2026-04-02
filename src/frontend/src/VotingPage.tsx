@@ -3055,7 +3055,7 @@ function CustomRewardsBanner({
 }) {
   const [marking, setMarking] = useState<bigint | null>(null);
 
-  if (customPools.length === 0) return null;
+  if (customPools.length === 0 && !isAdmin) return null;
 
   async function markDistributed(proposalId: bigint) {
     if (!actor) return;
@@ -3082,6 +3082,27 @@ function CustomRewardsBanner({
     } finally {
       setMarking(null);
     }
+  }
+
+  if (customPools.length === 0 && isAdmin) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm p-5"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Gift className="w-5 h-5 text-yellow-400" />
+          <h3 className="text-base font-bold text-yellow-300">
+            Community Proposal Rewards
+          </h3>
+        </div>
+        <p className="text-sm text-gray-500">
+          No community proposal rewards pools yet. They appear here after a
+          custom proposal is finalized.
+        </p>
+      </motion.div>
+    );
   }
 
   return (
@@ -3753,8 +3774,8 @@ export default function VotingPage({
               />
             )}
 
-            {/* Custom Proposal Rewards - All users */}
-            {customPools.length > 0 && (
+            {/* Custom Proposal Rewards - Admin always, others only when pools exist */}
+            {(isAdmin || customPools.length > 0) && (
               <CustomRewardsBanner
                 customPools={customPools}
                 customProposals={customProposals}
