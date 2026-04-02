@@ -9,7 +9,6 @@ import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
   useGetCanisterBalances,
-  useGetRewardsPools,
   useGetVoteAllocations,
   useMarkRewardsDistributed,
   useTokenPrices,
@@ -137,6 +136,7 @@ interface CustomProposal {
   totalVoteAmount: string;
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: kept for backend type alignment
 interface CustomVoteResult {
   optionLabel: string;
   optionIndex: bigint;
@@ -1527,20 +1527,17 @@ function VoteCard({
 
 function RewardsSection({
   pools,
-  isAdmin,
   adminPassword,
   actor,
   onRefresh,
 }: {
   pools: RewardsPoolEntry[];
-  isAdmin: boolean;
+  isAdmin?: boolean;
   adminPassword: string;
   actor: any;
   onRefresh: () => void;
 }) {
   const [marking, setMarking] = useState<bigint | null>(null);
-
-  if (pools.length === 0) return null;
 
   async function markDistributed(voteId: bigint) {
     if (!actor) return;
@@ -1575,65 +1572,85 @@ function RewardsSection({
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm p-6"
     >
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-3 mb-4">
         <Trophy className="w-5 h-5 text-yellow-400" />
-        <h3 className="text-lg font-bold text-yellow-300">Rewards Pools</h3>
+        <h3 className="text-lg font-bold text-yellow-300 uppercase tracking-wide">
+          Monthly Vote Rewards Pools
+        </h3>
+        <span className="ml-auto text-xs bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-bold uppercase">
+          ADMIN ONLY
+        </span>
       </div>
-      <div className="space-y-3">
-        {pools.map((p) => (
-          <div
-            key={String(p.voteId)}
-            data-ocid="rewards.item.1"
-            className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-yellow-600/20"
-          >
-            <div>
-              <p className="text-sm font-semibold text-yellow-300">
-                {"ICP" in p.voteType ? "$ICP" : "$BITTYICP"} Vote Rewards
-              </p>
-              <p className="text-xs text-gray-400">
-                Losing option:{" "}
-                <span className="text-yellow-400">{p.losingOptionLabel}</span> (
-                {Number(p.losingOptionPct)}%)
-              </p>
-              <p className="text-xs text-gray-400">
-                Pool amount:{" "}
-                <span className="text-white">
-                  {formatE8sAmount(p.poolAmount)}
-                </span>
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              {p.distributed ? (
-                <span className="text-xs text-green-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Distributed
-                </span>
-              ) : (
-                <span className="text-xs text-amber-400 flex items-center gap-1">
-                  <Gift className="w-3 h-3" />
-                  Pending
-                </span>
-              )}
-              {isAdmin && !p.distributed && (
+      {pools.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          No finalized monthly vote pools yet. They appear here after a monthly
+          vote is finalized.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {pools.map((p) => (
+            <div
+              key={String(p.voteId)}
+              data-ocid="rewards.item.1"
+              className="rounded-xl bg-white/5 border border-yellow-600/20 p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-yellow-300">
+                    {"ICP" in p.voteType ? "$ICP" : "$BITTYICP"} Monthly Vote
+                    Rewards
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Losing option:{" "}
+                    <span className="text-yellow-400">
+                      {p.losingOptionLabel}
+                    </span>{" "}
+                    ({Number(p.losingOptionPct)}%)
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Pool amount:{" "}
+                    <span className="text-white font-semibold">
+                      {formatE8sAmount(p.poolAmount)}{" "}
+                      {"ICP" in p.voteType ? "ICP" : "BITTYICP"}
+                    </span>
+                  </p>
+                </div>
+                {p.distributed ? (
+                  <span className="text-xs text-green-400 flex items-center gap-1 shrink-0 mt-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Distributed
+                  </span>
+                ) : (
+                  <span className="text-xs text-amber-400 flex items-center gap-1 shrink-0 mt-1">
+                    <Gift className="w-3.5 h-3.5" />
+                    Pending
+                  </span>
+                )}
+              </div>
+              {!p.distributed && (
                 <Button
                   data-ocid="rewards.confirm_button"
-                  size="sm"
-                  variant="outline"
                   onClick={() => markDistributed(p.voteId)}
                   disabled={marking === p.voteId}
-                  className="border-green-500/50 text-green-400 hover:bg-green-500/10 text-xs"
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-sm py-3"
                 >
                   {marking === p.voteId ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Distributing On-Chain...
+                    </>
                   ) : (
-                    "Mark Distributed"
+                    <>
+                      <Gift className="w-4 h-4 mr-2" />
+                      DISTRIBUTE REWARDS
+                    </>
                   )}
                 </Button>
               )}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -1695,312 +1712,6 @@ function CanisterRewardsBalance({ canisterId }: { canisterId: string }) {
           {bittyUsdVal != null ? `$${bittyUsdVal.toFixed(4)} USD` : ""}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── RewardsPoolPanel ────────────────────────────────────────────────────────
-
-function RewardsPoolCard({
-  pool,
-  isAdmin,
-  adminPassword: _adminPassword,
-  currentUserPrincipal,
-  expandedPool,
-  setExpandedPool,
-  markDistributed,
-  markDistributedPending,
-}: {
-  pool: any;
-  isAdmin: boolean;
-  adminPassword?: string;
-  currentUserPrincipal: string | null;
-  expandedPool: string | null;
-  setExpandedPool: (id: string | null) => void;
-  markDistributed: (voteId: bigint) => Promise<void>;
-  markDistributedPending: boolean;
-}) {
-  const voteAllocations = useGetVoteAllocations(pool.voteId as bigint);
-  const allocs = voteAllocations.data ?? [];
-
-  const losingLabel = pool.losingOptionLabel as string;
-  const isICP = "ICP" in pool.voteType;
-  const optionLabels = isICP
-    ? [
-        "BUY $BITTYICP & STORE IN TREASURY",
-        "INVEST INTO NEURON",
-        "HOLD FOR LATER VOTE",
-      ]
-    : ["BURN $BITTYICP", "SEND TO GAMES/DEV WALLET", "HOLD FOR LATER VOTE"];
-
-  const voterWinningPower: Record<string, number> = {};
-  let totalWinningPower = 0;
-
-  for (const alloc of allocs) {
-    const pcts = [Number(alloc.pctA), Number(alloc.pctB), Number(alloc.pctC)];
-    const vp = Number(alloc.votingPower);
-    let winningPct = 0;
-    for (let i = 0; i < 3; i++) {
-      if (optionLabels[i] !== losingLabel) {
-        winningPct += pcts[i];
-      }
-    }
-    const winningPower = (winningPct / 100) * vp;
-    voterWinningPower[alloc.voterPrincipal as string] = winningPower;
-    totalWinningPower += winningPower;
-  }
-
-  const isExpanded = expandedPool === pool.voteId.toString();
-  const voteTypeLabel = isICP ? "$ICP" : "$BITTYICP";
-  const losingPct = Number(pool.losingOptionPct);
-
-  const myPrincipal = currentUserPrincipal;
-  const myWinningPower = myPrincipal
-    ? (voterWinningPower[myPrincipal] ?? 0)
-    : 0;
-  const myShare =
-    totalWinningPower > 0 ? myWinningPower / totalWinningPower : 0;
-  const poolAmountNum = fromE8s(pool.poolAmount as string);
-  const myRewardEstimate = myShare * poolAmountNum * (losingPct / 100);
-
-  return (
-    <div className="rounded-xl border border-yellow-600/40 bg-black/40 backdrop-blur-sm p-5 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="shrink-0 rounded-lg bg-yellow-500/10 border border-yellow-500/25 p-2">
-            <Gift className="h-5 w-5 text-yellow-400" />
-          </div>
-          <div>
-            <div className="font-bold text-sm text-yellow-300">
-              {voteTypeLabel} Rewards Pool
-            </div>
-            <div className="text-xs text-gray-400">
-              Vote #{pool.voteId.toString()}
-            </div>
-          </div>
-        </div>
-        {pool.distributed ? (
-          <Badge
-            variant="outline"
-            className="text-xs border-green-500/40 text-green-400"
-          >
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Distributed
-          </Badge>
-        ) : (
-          <Badge
-            variant="outline"
-            className="text-xs border-yellow-500/40 text-yellow-400"
-          >
-            Pending
-          </Badge>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="bg-black/30 rounded-lg p-3">
-          <div className="text-xs text-gray-400 mb-1">Losing Option</div>
-          <div className="font-semibold text-white text-xs">{losingLabel}</div>
-          <div className="text-yellow-400 font-mono text-sm mt-1">
-            {losingPct}% of votes
-          </div>
-        </div>
-        <div className="bg-black/30 rounded-lg p-3">
-          <div className="text-xs text-gray-400 mb-1">Pool Amount</div>
-          <div className="font-semibold text-yellow-400 font-mono text-sm">
-            {losingPct}% of{" "}
-            {pool.poolAmount ? formatE8sAmount(pool.poolAmount) : "TBD"}{" "}
-            {voteTypeLabel}
-          </div>
-        </div>
-      </div>
-
-      {myPrincipal && myShare > 0 && (
-        <div className="bg-yellow-500/8 border border-yellow-500/20 rounded-lg p-3">
-          <div className="text-xs text-gray-400 mb-1">
-            Your Estimated Reward Share
-          </div>
-          <div className="font-bold text-yellow-300 text-lg">
-            {(myShare * 100).toFixed(2)}% of pool
-          </div>
-          {poolAmountNum > 0 && (
-            <div className="text-xs text-gray-400 mt-1">
-              ≈{" "}
-              {myRewardEstimate.toLocaleString(undefined, {
-                maximumFractionDigits: 4,
-              })}{" "}
-              {voteTypeLabel}
-            </div>
-          )}
-        </div>
-      )}
-
-      {isAdmin && (
-        <button
-          type="button"
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 transition-colors"
-          onClick={() =>
-            setExpandedPool(isExpanded ? null : pool.voteId.toString())
-          }
-        >
-          {isExpanded ? (
-            <ChevronUp className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
-          {isExpanded ? "Hide" : "Show"} voter breakdown ({allocs.length}{" "}
-          voters)
-        </button>
-      )}
-
-      {isAdmin && isExpanded && allocs.length > 0 && (
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {allocs.map((alloc: any) => {
-            const wp = voterWinningPower[alloc.voterPrincipal as string] ?? 0;
-            const share = totalWinningPower > 0 ? wp / totalWinningPower : 0;
-            return (
-              <div
-                key={alloc.voterPrincipal as string}
-                className="flex items-center justify-between gap-2 bg-black/30 rounded-lg px-3 py-2 text-xs"
-              >
-                <span className="font-mono text-gray-400 truncate max-w-[120px]">
-                  {(alloc.voterPrincipal as string).slice(0, 12)}…
-                </span>
-                <span className="text-yellow-400 font-semibold shrink-0">
-                  {(share * 100).toFixed(1)}%
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {isAdmin && !pool.distributed && (
-        <Button
-          onClick={() => markDistributed(pool.voteId as bigint)}
-          disabled={markDistributedPending}
-          variant="outline"
-          className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 w-full"
-          data-ocid="rewards.distribute_button"
-        >
-          {markDistributedPending ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Gift className="h-4 w-4 mr-2" />
-          )}
-          Distribute Rewards
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function RewardsPoolPanel({
-  isAdmin,
-  adminPassword,
-  currentUserPrincipal,
-}: {
-  isAdmin: boolean;
-  adminPassword: string;
-  currentUserPrincipal: string | null;
-}) {
-  const { actor } = useActor();
-  const rewardsPools = useGetRewardsPools();
-
-  const [expandedPool, setExpandedPool] = useState<string | null>(null);
-  const [distributing, setDistributing] = useState(false);
-
-  const undistributed = (rewardsPools.data ?? []).filter(
-    (p: any) => !p.distributed,
-  );
-  const distributed = (rewardsPools.data ?? []).filter(
-    (p: any) => p.distributed,
-  );
-
-  if (rewardsPools.isLoading) {
-    return (
-      <div className="flex justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-yellow-400" />
-      </div>
-    );
-  }
-
-  if ((rewardsPools.data ?? []).length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-500 text-sm">
-        No rewards pools yet. They will appear here after votes are finalized.
-      </div>
-    );
-  }
-
-  async function handleMarkDistributed(voteId: bigint) {
-    if (!actor) return;
-    setDistributing(true);
-    try {
-      const result = await (actor as any).distributeRewards(
-        adminPassword,
-        voteId,
-      );
-      if (result?.success) {
-        toast.success(
-          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
-        );
-        if (result.errors && result.errors.length > 0) {
-          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
-        }
-        rewardsPools.refetch();
-      } else {
-        const errs = result?.errors?.join(", ") ?? "Unknown error";
-        toast.error(`Distribution failed: ${errs}`);
-      }
-    } catch (e: any) {
-      toast.error(`Error: ${e?.message}`);
-    } finally {
-      setDistributing(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {undistributed.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="font-semibold text-sm tracking-widest uppercase text-yellow-400">
-            Pending Distribution
-          </h3>
-          {undistributed.map((pool: any) => (
-            <RewardsPoolCard
-              key={pool.voteId.toString()}
-              pool={pool}
-              isAdmin={isAdmin}
-              adminPassword={adminPassword}
-              currentUserPrincipal={currentUserPrincipal}
-              expandedPool={expandedPool}
-              setExpandedPool={setExpandedPool}
-              markDistributed={handleMarkDistributed}
-              markDistributedPending={distributing}
-            />
-          ))}
-        </div>
-      )}
-      {distributed.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="font-semibold text-sm tracking-widest uppercase text-gray-500">
-            Past Distributions
-          </h3>
-          {distributed.map((pool: any) => (
-            <RewardsPoolCard
-              key={pool.voteId.toString()}
-              pool={pool}
-              isAdmin={isAdmin}
-              adminPassword={adminPassword}
-              currentUserPrincipal={currentUserPrincipal}
-              expandedPool={expandedPool}
-              setExpandedPool={setExpandedPool}
-              markDistributed={handleMarkDistributed}
-              markDistributedPending={distributing}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -3111,11 +2822,14 @@ function CustomRewardsBanner({
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-yellow-600/40 bg-black/50 backdrop-blur-sm p-5"
     >
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-3 mb-4">
         <Gift className="w-5 h-5 text-yellow-400" />
-        <h3 className="text-base font-bold text-yellow-300">
+        <h3 className="text-base font-bold text-yellow-300 uppercase tracking-wide">
           Community Proposal Rewards
         </h3>
+        <span className="ml-auto text-xs bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-bold uppercase">
+          ADMIN ONLY
+        </span>
       </div>
       <div className="space-y-3">
         {customPools.map((pool) => {
@@ -3177,7 +2891,7 @@ function CustomRewardsBanner({
                   data-ocid="rewards.confirm_button"
                   onClick={() => markDistributed(pool.proposalId)}
                   disabled={marking === pool.proposalId}
-                  className="w-full mt-2 bg-yellow-600/20 hover:bg-yellow-600/40 border border-yellow-600/50 text-yellow-300 font-semibold"
+                  className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm py-3"
                 >
                   {marking === pool.proposalId ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -3849,13 +3563,6 @@ export default function VotingPage({
                         </div>
                       </div>
                     </div>
-                  )}
-                  {isAdmin && (
-                    <RewardsPoolPanel
-                      isAdmin={isAdmin}
-                      adminPassword={adminPassword}
-                      currentUserPrincipal={principal}
-                    />
                   )}
                 </div>
               </section>
