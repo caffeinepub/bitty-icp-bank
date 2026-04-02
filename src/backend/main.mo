@@ -145,6 +145,18 @@ actor {
     distributed : Bool;
   };
 
+  // Reward Transaction History
+  type RewardTransaction = {
+    id : Nat;
+    recipient : Text;
+    amount : Nat;
+    tokenType : VoteType;
+    timestamp : Int;
+    voteTitle : Text;
+    voteId : Nat;       // 0 if custom proposal
+    proposalId : Nat;   // 0 if monthly vote
+  };
+
   //------------------------------ State ------------------------------
 
   stable var WALLET_PRINCIPAL : Text = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -176,6 +188,10 @@ actor {
   stable var nextCustomProposalId : Nat = 1;
   stable var customVoteAllocations : [CustomVoteAllocation] = [];
   stable var customRewardsPools : [CustomRewardsPoolEntry] = [];
+
+  // Reward transaction history
+  stable var rewardTransactions : [RewardTransaction] = [];
+  stable var nextRewardTxId : Nat = 1;
 
   let ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -703,6 +719,27 @@ actor {
     n;
   };
 
+  // Helper: get vote title string for monthly vote
+  func getVoteTitle(voteId : Nat) : Text {
+    let vOpt = monthlyVotes.filter(func(v : MonthlyVote) : Bool { v.id == voteId }).values().next();
+    switch (vOpt) {
+      case (null) { "Monthly Vote #" # voteId.toText() };
+      case (?v) {
+        let typeLabel = switch (v.voteType) { case (#ICP) { "$ICP" }; case (#BITTYICP) { "$BITTYICP" } };
+        typeLabel # " Treasury Vote " # v.month.toText() # "/" # v.year.toText();
+      };
+    };
+  };
+
+  // Helper: get custom proposal title
+  func getCustomProposalTitle(proposalId : Nat) : Text {
+    let pOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
+    switch (pOpt) {
+      case (null) { "Community Proposal #" # proposalId.toText() };
+      case (?p) { p.title };
+    };
+  };
+
   // Real on-chain reward distribution for monthly votes
   public shared func distributeRewards(password : Text, voteId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
     if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
@@ -758,6 +795,8 @@ actor {
         let fee : Nat = 10000;
         var transferCount = 0;
         var errors : [Text] = [];
+        let voteTitle = getVoteTitle(voteId);
+        let nowTs = Time.now();
         for (vs in voterShares.values()) {
           let amount = rewardsTotal * vs.eligiblePower / totalEligible;
           if (amount > fee) {
@@ -771,7 +810,22 @@ actor {
                 created_at_time = null;
               });
               switch (result) {
-                case (#Ok(_)) { transferCount += 1 };
+                case (#Ok(_)) {
+                  transferCount += 1;
+                  // Record reward transaction
+                  let tx : RewardTransaction = {
+                    id = nextRewardTxId;
+                    recipient = vs.principal;
+                    amount = amount - fee;
+                    tokenType = pool.voteType;
+                    timestamp = nowTs;
+                    voteTitle = voteTitle;
+                    voteId = voteId;
+                    proposalId = 0;
+                  };
+                  rewardTransactions := rewardTransactions.concat([tx]);
+                  nextRewardTxId += 1;
+                };
                 case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
               };
             } catch (_) {
@@ -1058,6 +1112,8 @@ actor {
         let fee : Nat = 10000;
         var transferCount = 0;
         var errors : [Text] = [];
+        let proposalTitle = getCustomProposalTitle(proposalId);
+        let nowTs = Time.now();
         for (vs in voterShares.values()) {
           let amount = rewardsTotal * vs.eligiblePower / totalEligible;
           if (amount > fee) {
@@ -1071,7 +1127,22 @@ actor {
                 created_at_time = null;
               });
               switch (result) {
-                case (#Ok(_)) { transferCount += 1 };
+                case (#Ok(_)) {
+                  transferCount += 1;
+                  // Record reward transaction
+                  let tx : RewardTransaction = {
+                    id = nextRewardTxId;
+                    recipient = vs.principal;
+                    amount = amount - fee;
+                    tokenType = pool.voteType;
+                    timestamp = nowTs;
+                    voteTitle = proposalTitle;
+                    voteId = 0;
+                    proposalId = proposalId;
+                  };
+                  rewardTransactions := rewardTransactions.concat([tx]);
+                  nextRewardTxId += 1;
+                };
                 case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
               };
             } catch (_) {
@@ -1087,6 +1158,16 @@ actor {
     };
   };
 
+  //------------------------------ Reward Transaction History ------------------------------
+
+  public query func getMyRewardTransactions(principal : Text) : async [RewardTransaction] {
+    rewardTransactions.filter(func(tx : RewardTransaction) : Bool { tx.recipient == principal });
+  };
+
+  public shared func getAllRewardTransactions(password : Text) : async [RewardTransaction] {
+    if (not isAdmin(password)) return [];
+    rewardTransactions;
+  };
 
   //------------------------------ Community Chat ------------------------------
 
@@ -1109,6 +1190,7 @@ actor {
   public query func getChatMessages(voteId : Nat) : async [ChatMessage] {
     voteMessages.filter(func(m : ChatMessage) : Bool { m.voteId == voteId });
   };
+
   //------------------------------ Wallet Verification ------------------------------
 
   type ICRC1Account = { owner : Principal; subaccount : ?Blob };

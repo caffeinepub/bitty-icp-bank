@@ -104,6 +104,23 @@ export interface AdminConfig {
   gamesWallet: string;
 }
 
+export interface RewardTransaction {
+  id: bigint;
+  recipient: string;
+  amount: bigint;
+  tokenType: VoteType;
+  timestamp: bigint;
+  voteTitle: string;
+  voteId: bigint;
+  proposalId: bigint;
+}
+
+export interface DistributeResult {
+  success: boolean;
+  transferCount: bigint;
+  errors: string[];
+}
+
 export interface _SERVICE {
   adminLogin: (password: string) => Promise<boolean>;
   getManualBalances: () => Promise<ManualBalances>;
@@ -124,6 +141,7 @@ export interface _SERVICE {
   setVoteAmount: (password: string, voteId: bigint, amount: string) => Promise<boolean>;
   finalizeVote: (password: string, voteId: bigint) => Promise<boolean>;
   markRewardsDistributed: (password: string, voteId: bigint) => Promise<boolean>;
+  distributeRewards: (password: string, voteId: bigint) => Promise<DistributeResult>;
   getRewardsPools: () => Promise<RewardsPoolEntry[]>;
   setNeuronTopupAddress: (password: string, addr: string) => Promise<boolean>;
   setGamesWallet: (password: string, addr: string) => Promise<boolean>;
@@ -139,6 +157,10 @@ export interface _SERVICE {
   finalizeCustomProposal: (password: string, proposalId: bigint) => Promise<boolean>;
   getCustomRewardsPools: () => Promise<CustomRewardsPoolEntry[]>;
   markCustomRewardsDistributed: (password: string, proposalId: bigint) => Promise<boolean>;
+  distributeCustomRewards: (password: string, proposalId: bigint) => Promise<DistributeResult>;
+  // Reward transaction history
+  getMyRewardTransactions: (principal: string) => Promise<RewardTransaction[]>;
+  getAllRewardTransactions: (password: string) => Promise<RewardTransaction[]>;
   // Chat
   addChatMessage: (voteId: bigint, author: string, message: string) => Promise<[] | [ChatMessage]>;
   getChatMessages: (voteId: bigint) => Promise<ChatMessage[]>;

@@ -116,6 +116,7 @@ interface VotingPageProps {
   onBack: () => void;
   isAdmin: boolean;
   adminPassword: string;
+  onNavigate?: (page: string) => void;
 }
 
 interface SplitAllocation {
@@ -136,7 +137,6 @@ interface CustomProposal {
   totalVoteAmount: string;
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: kept for backend type alignment
 interface CustomVoteResult {
   optionLabel: string;
   optionIndex: bigint;
@@ -2372,7 +2372,6 @@ function CustomProposalCard({
               const pct = Number(r.totalWeightedPct);
               const isWinner = pct === maxPct && pct > 0;
               return (
-                // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
                 <div key={String(r.optionIndex)}>
                   <div className="flex justify-between text-xs mb-1">
                     <span
@@ -2917,6 +2916,7 @@ export default function VotingPage({
   onBack,
   isAdmin,
   adminPassword,
+  onNavigate,
 }: VotingPageProps) {
   const { actor } = useActor();
   const { identity, login, isLoggingIn, clear } = useInternetIdentity();
@@ -3073,29 +3073,25 @@ export default function VotingPage({
   }
 
   // Separate ICP and BITTYICP votes
-  const bittyVotes = votes.filter((v) => "BITTYICP" in v.voteType);
-  const icpVotes = votes.filter((v) => "ICP" in v.voteType);
+  const _bittyVotes = votes.filter((v) => "BITTYICP" in v.voteType);
+  const _icpVotes = votes.filter((v) => "ICP" in v.voteType);
 
-  const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+  const _nowNs = BigInt(Date.now()) * BigInt(1_000_000);
 
-  // Live (open) votes only for the main vote cards section
-  const latestBitty = bittyVotes
-    .filter((v) => !v.isFinalized && v.openTime <= nowNs)
-    .slice(-1)[0];
-  const latestICP = icpVotes
-    .filter((v) => !v.isFinalized && v.openTime <= nowNs)
-    .slice(-1)[0];
+  // ── New section-based display ─────────────────────────────────────────────
+  // SECTION 1: Scheduled — show last 3-5 regardless of status, sorted newest first
+  // Include: current live/open + most recent past finalized + upcoming
+  // Sort all by openTime descending, take up to 5
+  const allScheduledSorted = [...votes].sort((a, b) =>
+    b.openTime > a.openTime ? 1 : -1,
+  );
+  const recentScheduledVotes = allScheduledSorted.slice(0, 5);
 
-  // Upcoming (not yet open) votes - deduplicated, sorted by date
-  const upcomingBittyAll = bittyVotes
-    .filter((v) => !v.isFinalized && v.openTime > nowNs)
-    .sort((a, b) => (a.openTime < b.openTime ? -1 : 1));
-  const upcomingBitty = upcomingBittyAll.slice(0, 1);
-
-  const upcomingICPAll = icpVotes
-    .filter((v) => !v.isFinalized && v.openTime > nowNs)
-    .sort((a, b) => (a.openTime < b.openTime ? -1 : 1));
-  const upcomingICP = upcomingICPAll.slice(0, 1);
+  // SECTION 2: Community — show last 3-5 proposals sorted newest first
+  const allCommunitySorted = [...customProposals].sort((a, b) =>
+    b.openTime > a.openTime ? 1 : -1,
+  );
+  const recentCommunityProposals = allCommunitySorted.slice(0, 5);
 
   return (
     <div
@@ -3323,152 +3319,204 @@ export default function VotingPage({
           />
         )}
 
-        {/* Vote Cards */}
-        {isSignedIn && (
-          <>
-            {loadingVotes ? (
-              <div
-                data-ocid="votes.loading_state"
-                className="flex items-center justify-center py-12 gap-3 text-yellow-400"
-              >
-                <Loader2 className="w-6 h-6 animate-spin" />
-                <span>Loading votes…</span>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {latestBitty && (
-                  <VoteCard
-                    vote={latestBitty}
-                    principal={principal}
-                    votingPower={effectiveVotingPower}
-                    actor={activeActor}
-                    isAdmin={isAdmin}
-                    adminPassword={adminPassword}
-                  />
-                )}
-                {latestICP && (
-                  <VoteCard
-                    vote={latestICP}
-                    principal={principal}
-                    votingPower={effectiveVotingPower}
-                    actor={activeActor}
-                    isAdmin={isAdmin}
-                    adminPassword={adminPassword}
-                  />
-                )}
-                {!latestBitty && !latestICP && (
-                  <div
-                    data-ocid="votes.empty_state"
-                    className="text-center py-12 text-gray-500"
-                  >
-                    <VoteIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p>No votes available yet this month.</p>
-                  </div>
-                )}
-              </div>
-            )}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 1: SCHEDULED TREASURY PROPOSALS                            */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="space-y-4"
+        >
+          {/* Section header */}
+          <div className="flex items-center gap-3 border-b border-yellow-600/30 pb-3">
+            <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
+              <VoteIcon className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-lg text-yellow-300 uppercase tracking-widest">
+                Scheduled Treasury Proposals
+              </h2>
+              <p className="text-xs text-gray-400">
+                Monthly votes on how to allocate treasury funds
+              </p>
+            </div>
+          </div>
 
-            {/* Upcoming Votes */}
-            {(upcomingBitty.length > 0 || upcomingICP.length > 0) && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                className="space-y-4"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="shrink-0 rounded-xl bg-blue-500/10 border border-blue-500/25 p-2.5">
-                    <Clock className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-lg text-white tracking-tight">
-                      Upcoming Votes
-                    </h2>
-                    <p className="text-xs text-gray-400">
-                      Scheduled votes opening soon
-                    </p>
-                  </div>
-                </div>
-                {[...upcomingBitty, ...upcomingICP].map((vote) => (
-                  <VoteCard
-                    key={String(vote.id)}
-                    vote={vote}
-                    principal={principal}
-                    votingPower={effectiveVotingPower}
-                    actor={activeActor}
-                    isAdmin={isAdmin}
-                    adminPassword={adminPassword}
-                  />
-                ))}
-              </motion.div>
-            )}
-
-            {/* Community Proposals */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="space-y-4"
+          {loadingVotes ? (
+            <div
+              data-ocid="votes.loading_state"
+              className="flex items-center justify-center py-8 gap-3 text-yellow-400"
             >
-              <div className="flex items-center gap-3">
-                <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
-                  <FileText className="h-5 w-5 text-yellow-400" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-lg text-white tracking-tight">
-                    Community Proposals
-                  </h2>
-                  <p className="text-xs text-gray-400">
-                    Admin-created votes on specific treasury decisions
-                  </p>
-                </div>
-              </div>
-
-              {/* Admin: Create Proposal Form */}
-              {isAdmin && (
-                <CreateProposalForm
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading votes…</span>
+            </div>
+          ) : recentScheduledVotes.length === 0 ? (
+            <div
+              data-ocid="votes.empty_state"
+              className="text-center py-8 text-gray-500"
+            >
+              <VoteIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No scheduled votes yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentScheduledVotes.map((vote) => (
+                <VoteCard
+                  key={String(vote.id)}
+                  vote={vote}
+                  principal={principal}
+                  votingPower={effectiveVotingPower}
                   actor={activeActor}
+                  isAdmin={isAdmin}
                   adminPassword={adminPassword}
-                  onCreated={loadVotes}
                 />
+              ))}
+            </div>
+          )}
+
+          {/* Admin: Scheduled Rewards */}
+          {isAdmin && (
+            <RewardsSection
+              pools={pools}
+              isAdmin={isAdmin}
+              adminPassword={adminPassword}
+              actor={activeActor}
+              onRefresh={loadVotes}
+            />
+          )}
+
+          {/* View Full History */}
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              data-ocid="scheduled.history.link"
+              onClick={() => onNavigate?.("history/scheduled")}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-yellow-500/50 bg-yellow-500/8 text-yellow-400 font-bold text-sm tracking-wider hover:bg-yellow-500/15 hover:border-yellow-400/70 transition-all duration-200"
+            >
+              VIEW FULL HISTORY →
+            </button>
+          </div>
+        </motion.div>
+
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 2: TEAM / COMMUNITY PROPOSALS                              */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="space-y-4"
+        >
+          {/* Section header */}
+          <div className="flex items-center gap-3 border-b border-yellow-600/30 pb-3">
+            <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
+              <FileText className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-lg text-yellow-300 uppercase tracking-widest">
+                Team / Community Proposals
+              </h2>
+              <p className="text-xs text-gray-400">
+                Admin-created votes on specific treasury decisions
+              </p>
+            </div>
+          </div>
+
+          {/* Admin: Create Proposal Form */}
+          {isAdmin && (
+            <CreateProposalForm
+              actor={activeActor}
+              adminPassword={adminPassword}
+              onCreated={loadVotes}
+            />
+          )}
+
+          {loadingVotes ? (
+            <div className="flex items-center justify-center py-8 gap-3 text-yellow-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading proposals…</span>
+            </div>
+          ) : recentCommunityProposals.length === 0 ? (
+            <div
+              data-ocid="proposals.empty_state"
+              className="text-center py-8 text-gray-500"
+            >
+              <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No community proposals yet.</p>
+              {isAdmin && (
+                <p className="text-xs mt-1">Create one above to get started.</p>
               )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentCommunityProposals.map((p) => (
+                <CustomProposalCard
+                  key={String(p.id)}
+                  proposal={p}
+                  principal={principal}
+                  votingPower={effectiveVotingPower}
+                  actor={activeActor}
+                  isAdmin={isAdmin}
+                  adminPassword={adminPassword}
+                  onRefresh={loadVotes}
+                />
+              ))}
+            </div>
+          )}
 
-              {customProposals.length === 0 ? (
-                <div
-                  data-ocid="proposals.empty_state"
-                  className="text-center py-8 text-gray-500"
-                >
-                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No community proposals yet.</p>
-                  {isAdmin && (
-                    <p className="text-xs mt-1">
-                      Create one above to get started.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {customProposals.map((p) => (
-                    <CustomProposalCard
-                      key={String(p.id)}
-                      proposal={p}
-                      principal={principal}
-                      votingPower={effectiveVotingPower}
-                      actor={activeActor}
-                      isAdmin={isAdmin}
-                      adminPassword={adminPassword}
-                      onRefresh={loadVotes}
-                    />
-                  ))}
-                </div>
-              )}
-            </motion.div>
+          {/* Admin: Custom Proposal Rewards */}
+          {(isAdmin || customPools.length > 0) && (
+            <CustomRewardsBanner
+              customPools={customPools}
+              customProposals={customProposals}
+              isAdmin={isAdmin}
+              adminPassword={adminPassword}
+              actor={activeActor}
+              onRefresh={loadVotes}
+            />
+          )}
 
-            {/* Public Distribution Banner - visible to all */}
-            <PublicRewardsBanner pools={pools} />
+          {/* View Full History */}
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              data-ocid="community.history.link"
+              onClick={() => onNavigate?.("history/community")}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-yellow-500/50 bg-yellow-500/8 text-yellow-400 font-bold text-sm tracking-wider hover:bg-yellow-500/15 hover:border-yellow-400/70 transition-all duration-200"
+            >
+              VIEW FULL HISTORY →
+            </button>
+          </div>
+        </motion.div>
 
-            {/* My Rewards Panel - signed in non-admin voters only */}
-            {isSignedIn && !isAdmin && principal && (
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 3: REWARDS (signed-in users only)                          */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {isSignedIn && principal && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="space-y-4"
+          >
+            {/* Section header */}
+            <div className="flex items-center gap-3 border-b border-yellow-600/30 pb-3">
+              <div className="shrink-0 rounded-xl bg-yellow-500/10 border border-yellow-500/25 p-2.5">
+                <Gift className="h-5 w-5 text-yellow-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-bold text-lg text-yellow-300 uppercase tracking-widest">
+                  Rewards
+                </h2>
+                <p className="text-xs text-gray-400">
+                  Your voting rewards and distribution history
+                </p>
+              </div>
+            </div>
+
+            {/* My Rewards Panel for voters */}
+            {!isAdmin && (
               <MyRewardsPanel
                 votes={votes}
                 pools={pools}
@@ -3477,31 +3525,10 @@ export default function VotingPage({
               />
             )}
 
-            {/* Rewards Pools - Admin Only */}
-            {isAdmin && (
-              <RewardsSection
-                pools={pools}
-                isAdmin={isAdmin}
-                adminPassword={adminPassword}
-                actor={activeActor}
-                onRefresh={loadVotes}
-              />
-            )}
+            {/* Public Distribution Summary - visible to all signed-in users */}
+            <PublicRewardsBanner pools={pools} />
 
-            {/* Custom Proposal Rewards - Admin always, others only when pools exist */}
-            {(isAdmin || customPools.length > 0) && (
-              <CustomRewardsBanner
-                customPools={customPools}
-                customProposals={customProposals}
-                isAdmin={isAdmin}
-                adminPassword={adminPassword}
-                actor={activeActor}
-                onRefresh={loadVotes}
-              />
-            )}
-
-            {/* How It Works */}
-            {/* Canister Wallet - visible to all signed-in users */}
+            {/* Canister Rewards Wallet - visible to all signed-in users */}
             {canisterId && (
               <section data-ocid="deposit.section">
                 <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-4">
@@ -3512,7 +3539,7 @@ export default function VotingPage({
                     </h3>
                   </div>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    This is the canister's on-chain wallet. It receives the
+                    This is the canister&apos;s on-chain wallet. It receives the
                     rewards pool after each vote and executes distributions
                     automatically.
                   </p>
@@ -3567,12 +3594,11 @@ export default function VotingPage({
                 </div>
               </section>
             )}
-
-            <HowItWorksSection />
-          </>
+          </motion.div>
         )}
 
-        {!isSignedIn && <HowItWorksSection />}
+        {/* How It Works - always visible */}
+        <HowItWorksSection />
 
         {/* Footer */}
         <div className="text-center pb-4">

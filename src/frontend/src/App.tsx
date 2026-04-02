@@ -50,6 +50,8 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
+import CommunityHistoryPage from "./CommunityHistoryPage";
+import ScheduledHistoryPage from "./ScheduledHistoryPage";
 import VotingPage from "./VotingPage";
 
 const HIDE_BALANCES = false;
@@ -1000,9 +1002,9 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
 
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "voting">(
-    "dashboard",
-  );
+  const [currentPage, setCurrentPage] = useState<
+    "dashboard" | "voting" | "history/scheduled" | "history/community"
+  >("dashboard");
   const [adminPassword, setAdminPassword] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -1127,12 +1129,21 @@ export default function App() {
     b.timestamp > a.timestamp ? 1 : -1,
   );
 
+  if (currentPage === "history/scheduled") {
+    return <ScheduledHistoryPage onBack={() => setCurrentPage("voting")} />;
+  }
+
+  if (currentPage === "history/community") {
+    return <CommunityHistoryPage onBack={() => setCurrentPage("voting")} />;
+  }
+
   if (currentPage === "voting") {
     return (
       <VotingPage
         onBack={() => setCurrentPage("dashboard")}
         isAdmin={isAdmin}
         adminPassword={ADMIN_PASSWORD}
+        onNavigate={(page) => setCurrentPage(page as any)}
       />
     );
   }
