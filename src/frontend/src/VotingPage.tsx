@@ -2918,6 +2918,36 @@ export default function VotingPage({
   adminPassword,
   onNavigate,
 }: VotingPageProps) {
+  function playBankSound() {
+    try {
+      const ctx = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
+      const notes = [
+        { freq: 1200, start: 0, dur: 0.06 },
+        { freq: 1500, start: 0.07, dur: 0.06 },
+        { freq: 1800, start: 0.14, dur: 0.1 },
+        { freq: 1200, start: 0.26, dur: 0.04 },
+        { freq: 900, start: 0.31, dur: 0.08 },
+      ];
+      for (const { freq, start, dur } of notes) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "square";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(
+          0.001,
+          ctx.currentTime + start + dur,
+        );
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur + 0.01);
+      }
+    } catch {}
+  }
+
   const { actor } = useActor();
   const { identity, login, isLoggingIn, clear } = useInternetIdentity();
 
@@ -2928,6 +2958,9 @@ export default function VotingPage({
 
   // Wallet panel toggle
   const [walletOpen, setWalletOpen] = useState(false);
+
+  // VP panel visibility
+  const [vpPanelVisible, setVpPanelVisible] = useState(true);
 
   // Balance
   const [bittyBalance, setBittyBalance] = useState<number>(0);
@@ -2952,33 +2985,44 @@ export default function VotingPage({
   const isSignedIn = !!principal;
 
   // Verified wallet voting power
-  const [verifiedWalletsVP, setVerifiedWalletsVP] = useState(0);
+  const [verifiedWalletsData, setVerifiedWalletsData] = useState<
+    { address: string; balance: number; vp: number }[]
+  >([]);
+  const verifiedWalletsVP = verifiedWalletsData.reduce(
+    (sum, w) => sum + w.vp,
+    0,
+  );
   useEffect(() => {
     const a = actor as any;
     if (!principal || !a || !a.getMyVerifiedWallets) {
-      setVerifiedWalletsVP(0);
+      setVerifiedWalletsData([]);
       return;
     }
     (async () => {
       try {
         const wallets: string[] = await a.getMyVerifiedWallets();
-        const balances = await Promise.all(
-          wallets.map((w: string) =>
-            getBITTYBalance(w)
-              .then((raw) => Number(raw) / 1e8)
-              .catch(() => 0),
-          ),
+        const results = await Promise.all(
+          wallets.map(async (w: string) => {
+            const raw = await getBITTYBalance(w).catch(() => 0);
+            const balance = Number(raw) / 1e8;
+            const vp = Math.floor(balance / 1000);
+            return { address: w, balance, vp };
+          }),
         );
-        setVerifiedWalletsVP(
-          balances.reduce((sum, b) => sum + Math.floor(b / 1000), 0),
-        );
+        setVerifiedWalletsData(results);
       } catch {
-        setVerifiedWalletsVP(0);
+        setVerifiedWalletsData([]);
       }
     })();
   }, [principal, actor]);
 
   const effectiveVotingPower = votingPower + verifiedWalletsVP;
+
+  // Reset VP panel when user changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset on principal change
+  useEffect(() => {
+    setVpPanelVisible(true);
+  }, [principal]);
 
   // Load votes on actor ready
   const loadVotes = useCallback(async () => {
@@ -3160,11 +3204,96 @@ export default function VotingPage({
           </div>
         </motion.div>
 
+        {/* TOTAL VOTING POWER panel — above mascot, dismissible */}
+        <AnimatePresence>
+          {isSignedIn && vpPanelVisible && (
+            <motion.div
+              key="vp-panel"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="rounded-2xl border border-yellow-500/50 bg-black/60 backdrop-blur-sm p-4 relative"
+              data-ocid="voting_power.panel"
+            >
+              <button
+                type="button"
+                onClick={() => setVpPanelVisible(false)}
+                className="absolute top-3 right-3 text-gray-400 hover:text-white transition-colors"
+                aria-label="Close voting power panel"
+                data-ocid="voting_power.close_button"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <p className="text-xs font-extrabold text-yellow-300 uppercase tracking-widest text-center mb-2">
+                TOTAL VOTING POWER
+              </p>
+              <p
+                className="text-5xl font-black text-yellow-400 text-center mb-3"
+                data-ocid="voting_power.card"
+              >
+                {effectiveVotingPower}
+              </p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center border-t border-yellow-600/20 pt-2">
+                  <div>
+                    <span className="text-yellow-300 font-semibold">
+                      Connected Wallet
+                    </span>
+                    <p className="text-xs text-gray-400 font-mono">
+                      {principal?.slice(0, 16)}…
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-300">
+                      {bittyBalance.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      BITTYICP
+                    </p>
+                    <p className="text-yellow-400 font-bold">
+                      +{votingPower} VP
+                    </p>
+                  </div>
+                </div>
+                {verifiedWalletsData.map((w, i) => (
+                  <div
+                    key={w.address}
+                    className="flex justify-between items-center border-t border-yellow-600/10 pt-2"
+                    data-ocid={`verified_wallet.item.${i + 1}`}
+                  >
+                    <div>
+                      <span className="text-blue-300 font-semibold">
+                        Verified Wallet {i + 1}
+                      </span>
+                      <p className="text-xs text-gray-400 font-mono">
+                        {w.address.slice(0, 16)}…
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-300">
+                        {w.balance.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        BITTYICP
+                      </p>
+                      <p className="text-yellow-400 font-bold">+{w.vp} VP</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Bitty CEO Mascot — MY BITTY ICP SAVINGS */}
         <div className="flex flex-col items-center mt-2 mb-2">
           {/* Speech bubble */}
           <button
-            onClick={() => setWalletOpen((prev) => !prev)}
+            onClick={() => {
+              if (!walletOpen) playBankSound();
+              setWalletOpen((prev) => !prev);
+            }}
             type="button"
             data-ocid="wallet.open_modal_button"
             className="relative bg-white border-4 border-black rounded-2xl px-6 py-3 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[4px_4px_0px_#000] mb-0"
@@ -3212,7 +3341,10 @@ export default function VotingPage({
           {/* CEO Character */}
           <button
             type="button"
-            onClick={() => setWalletOpen((prev) => !prev)}
+            onClick={() => {
+              if (!walletOpen) playBankSound();
+              setWalletOpen((prev) => !prev);
+            }}
             data-ocid="wallet.toggle"
             className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200 mt-5"
             aria-label="My BITTY ICP Savings"
@@ -3238,161 +3370,173 @@ export default function VotingPage({
           </p>
         </div>
 
-        {/* Collapsible Wallet Section */}
+        {/* Wallet Modal Overlay */}
         <AnimatePresence>
           {walletOpen && (
             <motion.div
-              key="wallet-panel"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden w-full"
+              key="wallet-modal"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{
+                background: "rgba(0,0,0,0.8)",
+                backdropFilter: "blur(4px)",
+              }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setWalletOpen(false);
+              }}
             >
-              {!isSignedIn ? (
-                <div
-                  data-ocid="auth.modal"
-                  className="rounded-2xl border border-yellow-600/40 bg-black/60 backdrop-blur-sm p-6"
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.25 }}
+                className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-yellow-600/40 bg-gray-950 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Close button */}
+                <button
+                  type="button"
+                  onClick={() => setWalletOpen(false)}
+                  className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-gray-400 hover:text-white hover:bg-black/80 transition-colors"
+                  aria-label="Close wallet"
+                  data-ocid="wallet.close_button"
                 >
-                  <div className="text-center mb-6">
-                    <Wallet className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
-                    <h2 className="text-xl font-bold text-yellow-300">
-                      Sign In to View Your Wallet
-                    </h2>
-                    <p className="text-gray-400 text-sm mt-1">
-                      Connect the wallet that holds your $BITTYICP tokens
-                    </p>
-                  </div>
-                  <div className="grid gap-4">
-                    {/* Internet Identity */}
-                    <div>
-                      <Button
-                        data-ocid="auth.primary_button"
-                        onClick={() => login()}
-                        disabled={isLoggingIn}
-                        className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold py-3"
-                      >
-                        {isLoggingIn ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Connecting…
-                          </>
-                        ) : (
-                          <>
-                            <LogIn className="w-4 h-4 mr-2" />
-                            Sign in with Internet Identity
-                          </>
-                        )}
-                      </Button>
-                      <p className="text-xs text-gray-500 text-center mt-1">
-                        Supports NNS, Oisy, NFID, and any Internet
-                        Identity-based wallet
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-px bg-yellow-600/20" />
-                      <span className="text-xs text-gray-500">or</span>
-                      <div className="flex-1 h-px bg-yellow-600/20" />
-                    </div>
-
-                    {/* Plug Wallet */}
-                    <div>
-                      <Button
-                        data-ocid="auth.secondary_button"
-                        onClick={connectPlug}
-                        disabled={plugConnecting}
-                        variant="outline"
-                        className="w-full border-yellow-600/50 text-yellow-300 hover:bg-yellow-600/10 py-3"
-                      >
-                        {plugConnecting ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                            Connecting…
-                          </>
-                        ) : (
-                          <>
-                            <Wallet className="w-4 h-4 mr-2" />
-                            Connect Plug Wallet
-                          </>
-                        )}
-                      </Button>
-                      <p className="text-xs text-gray-500 text-center mt-1">
-                        Supports Plug browser extension wallet
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Connected user info card */}
-                  <div className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center">
-                          <ShieldCheck className="w-4 h-4 text-black" />
-                        </div>
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="p-6">
+                  {!isSignedIn ? (
+                    <div
+                      data-ocid="auth.modal"
+                      className="rounded-2xl border border-yellow-600/40 bg-black/60 backdrop-blur-sm p-6"
+                    >
+                      <div className="text-center mb-6">
+                        <Wallet className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
+                        <h2 className="text-xl font-bold text-yellow-300">
+                          Sign In to View Your Wallet
+                        </h2>
+                        <p className="text-gray-400 text-sm mt-1">
+                          Connect the wallet that holds your $BITTYICP tokens
+                        </p>
+                      </div>
+                      <div className="grid gap-4">
+                        {/* Internet Identity */}
                         <div>
-                          <p className="text-xs text-gray-400">Connected as</p>
-                          <p className="text-sm font-mono text-yellow-300">
-                            {principal?.slice(0, 20)}…
+                          <Button
+                            data-ocid="auth.primary_button"
+                            onClick={() => login()}
+                            disabled={isLoggingIn}
+                            className="w-full bg-gradient-to-r from-yellow-600 to-amber-500 hover:from-yellow-500 hover:to-amber-400 text-black font-bold py-3"
+                          >
+                            {isLoggingIn ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Connecting…
+                              </>
+                            ) : (
+                              <>
+                                <LogIn className="w-4 h-4 mr-2" />
+                                Sign in with Internet Identity
+                              </>
+                            )}
+                          </Button>
+                          <p className="text-xs text-gray-500 text-center mt-1">
+                            Supports NNS, Oisy, NFID, and any Internet
+                            Identity-based wallet
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-px bg-yellow-600/20" />
+                          <span className="text-xs text-gray-500">or</span>
+                          <div className="flex-1 h-px bg-yellow-600/20" />
+                        </div>
+
+                        {/* Plug Wallet */}
+                        <div>
+                          <Button
+                            data-ocid="auth.secondary_button"
+                            onClick={connectPlug}
+                            disabled={plugConnecting}
+                            variant="outline"
+                            className="w-full border-yellow-600/50 text-yellow-300 hover:bg-yellow-600/10 py-3"
+                          >
+                            {plugConnecting ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Connecting…
+                              </>
+                            ) : (
+                              <>
+                                <Wallet className="w-4 h-4 mr-2" />
+                                Connect Plug Wallet
+                              </>
+                            )}
+                          </Button>
+                          <p className="text-xs text-gray-500 text-center mt-1">
+                            Supports Plug browser extension wallet
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        {balanceLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
-                        ) : (
-                          <>
-                            <p className="text-sm font-bold text-yellow-400">
-                              {bittyBalance.toLocaleString(undefined, {
-                                maximumFractionDigits: 2,
-                              })}{" "}
-                              BITTYICP
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {votingPower >= 1 ? (
-                                <span className="text-green-400">
-                                  {votingPower} vote
-                                  {votingPower !== 1 ? "s" : ""}
-                                </span>
-                              ) : (
-                                <span className="text-red-400">
-                                  Not eligible (need 1,000+)
-                                </span>
-                              )}
-                            </p>
-                          </>
-                        )}
-                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Connected user info card */}
+                      <div className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center">
+                              <ShieldCheck className="w-4 h-4 text-black" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">
+                                Connected as
+                              </p>
+                              <p className="text-sm font-mono text-yellow-300">
+                                {principal?.slice(0, 20)}…
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {balanceLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
+                            ) : (
+                              <>
+                                <p className="text-sm font-bold text-yellow-400">
+                                  {bittyBalance.toLocaleString(undefined, {
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  BITTYICP
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  {votingPower >= 1 ? (
+                                    <span className="text-green-400">
+                                      {votingPower} vote
+                                      {votingPower !== 1 ? "s" : ""}
+                                    </span>
+                                  ) : (
+                                    <span className="text-red-400">
+                                      Not eligible (need 1,000+)
+                                    </span>
+                                  )}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                  {/* Total Voting Power */}
-                  <div className="rounded-2xl border border-yellow-600/40 bg-black/40 backdrop-blur-sm p-5 text-center">
-                    <p className="text-sm font-extrabold text-yellow-300 uppercase tracking-widest mb-2">
-                      TOTAL VOTING POWER
-                    </p>
-                    <p className="text-7xl font-black text-yellow-400 leading-none">
-                      {effectiveVotingPower}
-                    </p>
-                    <p className="text-base font-semibold text-gray-300 mt-2">
-                      votes
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Combined balance of your connected account + all verified
-                      external wallets
-                    </p>
-                  </div>
-
-                  {/* Full Wallet Panel */}
-                  <MyWalletPanel
-                    principal={principal}
-                    actor={activeActor}
-                    isPlugUser={!!plugPrincipal}
-                  />
+                      {/* Full Wallet Panel */}
+                      <MyWalletPanel
+                        principal={principal}
+                        actor={activeActor}
+                        isPlugUser={!!plugPrincipal}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
