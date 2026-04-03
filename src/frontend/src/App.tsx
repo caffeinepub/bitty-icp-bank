@@ -1292,80 +1292,59 @@ export default function App() {
             </div>
           </motion.div>
 
-          {/* Governance Rewards Banner */}
+          {/* Governance Rewards Banner — compact */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.05 }}
-            className="glass-card-gold rounded-2xl p-6"
+            className="glass-card-gold rounded-xl px-4 py-3"
             data-ocid="governance_rewards.card"
           >
-            <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1 text-center">
-              Governance Rewards
+            <p className="text-[10px] font-semibold text-gold/70 tracking-[0.2em] uppercase mb-2 text-center">
+              Governance Rewards Distributed
             </p>
-            <p className="text-xs text-muted-foreground/50 mb-5 text-center">
-              Total Rewards Distributed To Voters
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-1">
               {/* ICP Distributed */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
-                  $ICP Distributed
-                </div>
-                <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  $ICP:
+                </span>
+                <span className="text-base font-heading font-bold text-gold tabular-nums">
                   {totalRewardsData.isLoading ? (
-                    <span className="opacity-40">—</span>
-                  ) : totalRewardsICP !== null ? (
-                    <>
-                      {totalRewardsICP.toLocaleString("en-US", {
-                        minimumFractionDigits: 4,
-                        maximumFractionDigits: 8,
-                      })}{" "}
-                      <span className="text-lg font-normal">ICP</span>
-                    </>
+                    <span className="opacity-40 text-sm">—</span>
                   ) : (
-                    <span className="opacity-40">0.0000 ICP</span>
+                    (totalRewardsICP ?? 0).toLocaleString("en-US", {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 8,
+                    })
                   )}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {totalRewardsData.isLoading ? (
-                    <span className="opacity-40">Loading…</span>
-                  ) : totalRewardsIcpUsd !== null ? (
-                    <>{formatUsd(totalRewardsIcpUsd)} USD</>
-                  ) : (
-                    "$0.00 USD"
-                  )}
-                </div>
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {totalRewardsData.isLoading
+                    ? ""
+                    : `(${formatUsd(totalRewardsIcpUsd ?? 0)} USD)`}
+                </span>
               </div>
               {/* BITTYICP Distributed */}
-              <div className="flex flex-col gap-1">
-                <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
-                  $BITTYICP Distributed
-                </div>
-                <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  $BITTYICP:
+                </span>
+                <span className="text-base font-heading font-bold text-gold tabular-nums">
                   {totalRewardsData.isLoading ? (
-                    <span className="opacity-40">—</span>
-                  ) : totalRewardsBITTY !== null ? (
-                    <>
-                      {totalRewardsBITTY.toLocaleString("en-US", {
-                        minimumFractionDigits: 4,
-                        maximumFractionDigits: 8,
-                      })}{" "}
-                      <span className="text-lg font-normal">BITTYICP</span>
-                    </>
+                    <span className="opacity-40 text-sm">—</span>
                   ) : (
-                    <span className="opacity-40">0.0000 BITTYICP</span>
+                    (totalRewardsBITTY ?? 0).toLocaleString("en-US", {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 8,
+                    })
                   )}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {totalRewardsData.isLoading ? (
-                    <span className="opacity-40">Loading…</span>
-                  ) : totalRewardsBittyUsd !== null ? (
-                    <>{formatUsd(totalRewardsBittyUsd)} USD</>
-                  ) : (
-                    "$0.00 USD"
-                  )}
-                </div>
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {totalRewardsData.isLoading
+                    ? ""
+                    : `(${formatUsd(totalRewardsBittyUsd ?? 0)} USD)`}
+                </span>
               </div>
             </div>
           </motion.div>
