@@ -1230,7 +1230,7 @@ export default function App() {
                 className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-xs tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
                 data-ocid="vote_page.link"
               >
-                Vote
+                💳 Vote
               </motion.button>
               {isAdmin && (
                 <Button
