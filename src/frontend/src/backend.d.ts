@@ -60,7 +60,6 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
-export type VoteType = { ICP: null } | { BITTYICP: null };
 export interface CustomOptionAlloc {
     optionIndex: bigint;
     pct: bigint;
@@ -100,6 +99,16 @@ export interface DistributeResult {
     success: boolean;
     transferCount: bigint;
     errors: string[];
+}
+export interface RewardTransaction {
+    id: bigint;
+    recipient: string;
+    amount: bigint;
+    tokenType: VoteType;
+    timestamp: bigint;
+    voteTitle: string;
+    voteId: bigint;
+    proposalId: bigint;
 }
 
 export interface backendInterface {
@@ -155,4 +164,6 @@ export interface backendInterface {
     markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
     distributeRewards(password: string, voteId: bigint): Promise<DistributeResult>;
     distributeCustomRewards(password: string, proposalId: bigint): Promise<DistributeResult>;
+    getMyRewardTransactions(principal: string): Promise<Array<RewardTransaction>>;
+    getTotalRewardsDistributed(): Promise<{ totalICP: bigint; totalBITTY: bigint }>;
 }

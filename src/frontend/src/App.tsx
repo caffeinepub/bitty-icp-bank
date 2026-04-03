@@ -22,6 +22,8 @@ import {
   useGetLiveBalances,
   useGetManualBalances,
   useGetNeuronStake,
+  useGetRewardsWalletBalances,
+  useGetTotalRewardsDistributed,
   useSetGamesWallet,
   useSetManualBalances,
   useSetManualBittyPrice,
@@ -1027,6 +1029,8 @@ export default function App() {
     "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
   const gamesWallet = adminConfig.data?.gamesWallet || GAMES_WALLET_ADDRESS;
   const gamesBalances = useGetGamesWalletBalances(gamesWallet);
+  const rewardsWalletBalances = useGetRewardsWalletBalances();
+  const totalRewardsData = useGetTotalRewardsDistributed();
 
   const isAdmin = !!adminPassword;
 
@@ -1111,15 +1115,51 @@ export default function App() {
       ? gamesBittyNum * bittyUsd
       : null;
 
+  const rewardsWalletBittyRaw = rewardsWalletBalances.data?.bitty ?? null;
+  const rewardsWalletBittyNum =
+    rewardsWalletBittyRaw !== null ? Number(rewardsWalletBittyRaw) / 1e8 : null;
+  const rewardsWalletIcpRaw = rewardsWalletBalances.data?.icp ?? null;
+  const rewardsWalletIcpNum =
+    rewardsWalletIcpRaw !== null ? Number(rewardsWalletIcpRaw) / 1e8 : null;
+  const rewardsWalletIcpUsd =
+    rewardsWalletIcpNum !== null && icpUsd !== null
+      ? rewardsWalletIcpNum * icpUsd
+      : null;
+  const rewardsWalletBittyUsd =
+    rewardsWalletBittyNum !== null && bittyUsd !== null
+      ? rewardsWalletBittyNum * bittyUsd
+      : null;
+
+  const totalRewardsICP =
+    totalRewardsData.data?.totalICP != null
+      ? Number(totalRewardsData.data.totalICP) / 1e8
+      : null;
+  const totalRewardsBITTY =
+    totalRewardsData.data?.totalBITTY != null
+      ? Number(totalRewardsData.data.totalBITTY) / 1e8
+      : null;
+  const totalRewardsIcpUsd =
+    totalRewardsICP !== null && icpUsd !== null
+      ? totalRewardsICP * icpUsd
+      : null;
+  const totalRewardsBittyUsd =
+    totalRewardsBITTY !== null && bittyUsd !== null
+      ? totalRewardsBITTY * bittyUsd
+      : null;
+
   const grandTotalUsd =
     totalIcpUsd !== null ||
     bittyTreasuryUsd !== null ||
     fundUsdValue !== null ||
-    gamesUsdValue !== null
+    gamesUsdValue !== null ||
+    rewardsWalletIcpUsd !== null ||
+    rewardsWalletBittyUsd !== null
       ? (totalIcpUsd ?? 0) +
         (bittyTreasuryUsd ?? 0) +
         (fundUsdValue ?? 0) +
-        (gamesUsdValue ?? 0)
+        (gamesUsdValue ?? 0) +
+        (rewardsWalletIcpUsd ?? 0) +
+        (rewardsWalletBittyUsd ?? 0)
       : null;
 
   const grandTotalLoading =
@@ -1249,6 +1289,84 @@ export default function App() {
                   —
                 </span>
               )}
+            </div>
+          </motion.div>
+
+          {/* Governance Rewards Banner */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.05 }}
+            className="glass-card-gold rounded-2xl p-6"
+            data-ocid="governance_rewards.card"
+          >
+            <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1 text-center">
+              Governance Rewards
+            </p>
+            <p className="text-xs text-muted-foreground/50 mb-5 text-center">
+              Total Rewards Distributed To Voters
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* ICP Distributed */}
+              <div className="flex flex-col gap-1">
+                <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
+                  $ICP Distributed
+                </div>
+                <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40">—</span>
+                  ) : totalRewardsICP !== null ? (
+                    <>
+                      {totalRewardsICP.toLocaleString("en-US", {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 8,
+                      })}{" "}
+                      <span className="text-lg font-normal">ICP</span>
+                    </>
+                  ) : (
+                    <span className="opacity-40">0.0000 ICP</span>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40">Loading…</span>
+                  ) : totalRewardsIcpUsd !== null ? (
+                    <>{formatUsd(totalRewardsIcpUsd)} USD</>
+                  ) : (
+                    "$0.00 USD"
+                  )}
+                </div>
+              </div>
+              {/* BITTYICP Distributed */}
+              <div className="flex flex-col gap-1">
+                <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
+                  $BITTYICP Distributed
+                </div>
+                <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40">—</span>
+                  ) : totalRewardsBITTY !== null ? (
+                    <>
+                      {totalRewardsBITTY.toLocaleString("en-US", {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 8,
+                      })}{" "}
+                      <span className="text-lg font-normal">BITTYICP</span>
+                    </>
+                  ) : (
+                    <span className="opacity-40">0.0000 BITTYICP</span>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40">Loading…</span>
+                  ) : totalRewardsBittyUsd !== null ? (
+                    <>{formatUsd(totalRewardsBittyUsd)} USD</>
+                  ) : (
+                    "$0.00 USD"
+                  )}
+                </div>
+              </div>
             </div>
           </motion.div>
 
@@ -1614,6 +1732,107 @@ export default function App() {
               </motion.div>
             </a>
           </section>
+          {/* Games & Rewards Wallet */}
+          <section data-ocid="rewards_wallet.section">
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              GAMES AND REWARDS
+            </h2>
+            <a
+              href="https://www.icexplorer.io/address/detail/gayym-bg32z-py45s-ev5ck-fkt2o-zgyhb-j4top-cb2p3-udrip-qsh7q-jae"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.25 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="rewards_wallet.card"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <TrendingUp className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {rewardsWalletBalances.isLoading ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                        balances...
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $ICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : rewardsWalletBalances.data?.icp != null ? (
+                              formatBalance(rewardsWalletBalances.data.icp)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : rewardsWalletIcpUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(rewardsWalletIcpUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $BITTYICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : rewardsWalletBalances.data?.bitty != null ? (
+                              formatBalance(rewardsWalletBalances.data.bitty)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : rewardsWalletBittyUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(rewardsWalletBittyUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The{" "}
+                  <span className="text-gold font-semibold">
+                    Games and Rewards wallet
+                  </span>{" "}
+                  is used to load the internal distribution wallet and fund
+                  community game rewards for{" "}
+                  <span className="text-gold font-semibold">BITTY ON ICP</span>.
+                </p>
+                <div className="text-xs text-muted-foreground/50">
+                  View on ICExplorer ↗
+                </div>
+              </motion.div>
+            </a>
+          </section>
+
           {/* Announcements */}
           <section>
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
@@ -1804,6 +2023,22 @@ export default function App() {
               the NNS staking — allowing a substantial increase to the rate of
               treasury growth.
             </p>
+
+            <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+            <div className="space-y-3">
+              <h3 className="font-heading font-bold text-gold tracking-wide uppercase text-xs">
+                Games and Rewards Wallet
+              </h3>
+              <p className="text-muted-foreground">
+                The{" "}
+                <span className="text-gold font-semibold">
+                  Games and Rewards wallet
+                </span>{" "}
+                is used to load the internal distribution wallet and fund
+                community game rewards.
+              </p>
+            </div>
 
             <div className="flex justify-end pt-1">
               <Button

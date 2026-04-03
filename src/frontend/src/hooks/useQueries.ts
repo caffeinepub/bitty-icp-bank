@@ -446,3 +446,41 @@ export function useGetCanisterBalances(canisterId: string) {
     retry: 2,
   });
 }
+
+const REWARDS_WALLET =
+  "gayym-bg32z-py45s-ev5ck-fkt2o-zgyhb-j4top-cb2p3-udrip-qsh7q-jae";
+
+export function useGetRewardsWalletBalances() {
+  return useQuery<{ icp: bigint | null; bitty: bigint | null }>({
+    queryKey: ["rewardsWalletBalances"],
+    queryFn: async () => {
+      const [icp, bitty] = await Promise.allSettled([
+        getICPBalance(REWARDS_WALLET),
+        getBITTYBalance(REWARDS_WALLET),
+      ]);
+      return {
+        icp: icp.status === "fulfilled" ? icp.value : null,
+        bitty: bitty.status === "fulfilled" ? bitty.value : null,
+      };
+    },
+    staleTime: 30_000,
+    retry: 2,
+  });
+}
+
+export function useGetTotalRewardsDistributed() {
+  const { actor, isFetching } = useActor();
+  return useQuery<{ totalICP: bigint; totalBITTY: bigint }>({
+    queryKey: ["totalRewardsDistributed"],
+    queryFn: async () => {
+      if (!actor) return { totalICP: 0n, totalBITTY: 0n };
+      const a = actor as any;
+      if (!a.getTotalRewardsDistributed)
+        return { totalICP: 0n, totalBITTY: 0n };
+      return await a.getTotalRewardsDistributed();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 60_000,
+    retry: 2,
+  });
+}

@@ -1169,6 +1169,19 @@ actor {
     rewardTransactions;
   };
 
+
+  public query func getTotalRewardsDistributed() : async { totalICP : Nat; totalBITTY : Nat } {
+    var totalICP : Nat = 0;
+    var totalBITTY : Nat = 0;
+    for (tx in rewardTransactions.vals()) {
+      switch (tx.tokenType) {
+        case (#ICP) { totalICP += tx.amount };
+        case (#BITTYICP) { totalBITTY += tx.amount };
+      };
+    };
+    { totalICP = totalICP; totalBITTY = totalBITTY }
+  };
+
   //------------------------------ Community Chat ------------------------------
 
   public shared ({ caller }) func addChatMessage(voteId : Nat, author : Text, message : Text) : async ?ChatMessage {
