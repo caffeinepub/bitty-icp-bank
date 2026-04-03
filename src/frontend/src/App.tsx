@@ -53,6 +53,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import CommunityHistoryPage from "./CommunityHistoryPage";
+import HowItWorksPage from "./HowItWorksPage";
 import ScheduledHistoryPage from "./ScheduledHistoryPage";
 import VotingPage from "./VotingPage";
 
@@ -1005,7 +1006,11 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
   const [currentPage, setCurrentPage] = useState<
-    "dashboard" | "voting" | "history/scheduled" | "history/community"
+    | "dashboard"
+    | "voting"
+    | "history/scheduled"
+    | "history/community"
+    | "how-it-works"
   >("dashboard");
   const [adminPassword, setAdminPassword] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -1175,6 +1180,10 @@ export default function App() {
 
   if (currentPage === "history/community") {
     return <CommunityHistoryPage onBack={() => setCurrentPage("voting")} />;
+  }
+
+  if (currentPage === "how-it-works") {
+    return <HowItWorksPage onBack={() => setCurrentPage("voting")} />;
   }
 
   if (currentPage === "voting") {

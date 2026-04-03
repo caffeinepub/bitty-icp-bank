@@ -31,7 +31,6 @@ import {
   Copy,
   FileText,
   Gift,
-  HelpCircle,
   Loader2,
   LogIn,
   LogOut,
@@ -760,97 +759,6 @@ function MyWalletPanel({
           )}
         </div>
       </div>
-    </motion.div>
-  );
-}
-
-// ─── HowItWorks ──────────────────────────────────────────────────────────────
-
-function HowItWorksSection() {
-  const [open, setOpen] = useState(false);
-  const items = [
-    {
-      icon: "🪙",
-      title: "Minimum 1,000 $BITTYICP required",
-      desc: "You must hold at least 1,000 $BITTYICP to vote. This ensures only genuine community members participate.",
-    },
-    {
-      icon: "⚡",
-      title: "Voting Power = BITTYICP ÷ 1,000",
-      desc: "Every 1,000 $BITTYICP gives you 1 vote. Hold 10,000? You have 10 votes. More tokens = more influence.",
-    },
-    {
-      icon: "🎚️",
-      title: "Split your 100% across options",
-      desc: "Instead of picking one option, you allocate percentages across all three choices totalling exactly 100%. E.g. 60% Option A, 30% Option B, 10% Option C.",
-    },
-    {
-      icon: "📅",
-      title: "Two monthly votes",
-      desc: "$BITTYICP vote opens on the 15th of each month. $ICP vote opens on the last day. Both run for 7 days.",
-    },
-    {
-      icon: "🏆",
-      title: "Rewards pool from the losing option",
-      desc: "After voting closes, the lowest-voted option's percentage goes into a rewards pool. Admin distributes it proportionally to all voters based on their voting power.",
-    },
-    {
-      icon: "🔐",
-      title: "Sign in to prove wallet ownership",
-      desc: "Connect with Internet Identity or Plug Wallet. Your principal is read automatically — no pasting needed.",
-    },
-  ];
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-yellow-600/30 bg-black/40 backdrop-blur-sm overflow-hidden"
-    >
-      <button
-        type="button"
-        data-ocid="how_it_works.toggle"
-        onClick={() => setOpen((p) => !p)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-white/5 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <HelpCircle className="w-5 h-5 text-yellow-400" />
-          <span className="font-semibold text-yellow-300">
-            How Voting Works
-          </span>
-        </div>
-        {open ? (
-          <ChevronUp className="w-4 h-4 text-yellow-400" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-yellow-400" />
-        )}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="px-6 pb-6 grid gap-3 sm:grid-cols-2">
-              {items.map((item) => (
-                <div
-                  key={item.title}
-                  className="flex gap-3 p-3 rounded-xl bg-white/5 border border-yellow-600/20"
-                >
-                  <span className="text-2xl">{item.icon}</span>
-                  <div>
-                    <p className="text-sm font-semibold text-yellow-300">
-                      {item.title}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
@@ -3352,17 +3260,84 @@ export default function VotingPage({
           </button>
         </div>
 
-        {/* BOOST YOUR VOTING POWER — always visible */}
-        <div className="w-full rounded-xl border border-yellow-500/60 bg-yellow-900/20 px-4 py-3 text-center">
-          <p className="text-sm font-extrabold text-yellow-300 uppercase tracking-wide">
-            🔗 BOOST YOUR VOTING POWER
-          </p>
-          <p className="text-xs text-yellow-200 mt-1">
-            Hold $BITTYICP in an external wallet like Oisy? Verify it below to
-            add its balance to your voting power. Each verified wallet counts
-            toward your total votes.
-          </p>
+        {/* HOW IT WORKS button */}
+        <div className="flex justify-center mt-2 mb-3">
+          <button
+            type="button"
+            onClick={() => onNavigate?.("how-it-works")}
+            className="border border-yellow-500 text-yellow-400 hover:bg-yellow-500/10 px-6 py-2 rounded-full font-bold text-sm transition-colors"
+            data-ocid="how_it_works.link.button"
+          >
+            HOW IT WORKS →
+          </button>
         </div>
+
+        {/* BOOST YOUR VOTING POWER — prominent animated banner */}
+        <motion.div
+          className="w-full rounded-2xl overflow-hidden relative"
+          animate={{
+            boxShadow: [
+              "0 0 0px oklch(0.87 0.17 90 / 0)",
+              "0 0 20px oklch(0.87 0.17 90 / 0.5)",
+              "0 0 10px oklch(0.87 0.17 90 / 0.2)",
+              "0 0 24px oklch(0.87 0.17 90 / 0.55)",
+              "0 0 0px oklch(0.87 0.17 90 / 0)",
+            ],
+          }}
+          transition={{
+            duration: 2.5,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "easeInOut",
+          }}
+          style={{
+            border: "2px solid oklch(0.87 0.17 90 / 0.7)",
+            background:
+              "linear-gradient(135deg, oklch(0.87 0.17 90 / 0.10) 0%, oklch(0.20 0.05 252) 100%)",
+          }}
+        >
+          {/* Flying rockets inside banner */}
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="absolute pointer-events-none select-none"
+              style={{
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: 18,
+              }}
+              initial={{ left: "-30px", opacity: 0 }}
+              animate={{
+                left: ["−30px", "110%"],
+                opacity: [0, 1, 1, 0],
+              }}
+              transition={{
+                duration: 2.2,
+                delay: i * 0.9,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: "linear",
+              }}
+            >
+              🚀
+            </motion.span>
+          ))}
+          <div className="px-5 py-4 text-center relative z-10">
+            <p
+              className="font-black text-yellow-300 uppercase tracking-widest"
+              style={{
+                fontSize: "1.1rem",
+                fontFamily: "Impact, Arial Black, sans-serif",
+                letterSpacing: "0.08em",
+              }}
+            >
+              🚀🔗 BOOST YOUR VOTING POWER
+            </p>
+            <p className="text-yellow-100/80 mt-2 text-sm leading-relaxed">
+              Hold $BITTYICP in an external wallet like Oisy? Verify it below to
+              add its balance to your voting power. Each verified wallet counts
+              toward your total votes.
+            </p>
+          </div>
+        </motion.div>
 
         {/* Wallet Modal Overlay */}
         <AnimatePresence>
@@ -3814,7 +3789,6 @@ export default function VotingPage({
         )}
 
         {/* How It Works - always visible */}
-        <HowItWorksSection />
 
         {/* Footer */}
         <div className="text-center pb-4">
