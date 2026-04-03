@@ -157,6 +157,16 @@ actor {
     proposalId : Nat;   // 0 if monthly vote
   };
 
+  // Pending distribution: finalized but canister balance was insufficient
+  type PendingDistribution = {
+    isCustom : Bool;
+    voteId : Nat;        // monthly vote id (0 if custom)
+    proposalId : Nat;    // custom proposal id (0 if monthly)
+    voteType : VoteType;
+    amountNeeded : Text; // human-readable e8s string
+    title : Text;
+  };
+
   //------------------------------ State ------------------------------
 
   stable var WALLET_PRINCIPAL : Text = "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
@@ -192,6 +202,9 @@ actor {
   // Reward transaction history
   stable var rewardTransactions : [RewardTransaction] = [];
   stable var nextRewardTxId : Nat = 1;
+
+  // Pending distributions (finalized but underfunded)
+  stable var pendingDistributions : [PendingDistribution] = [];
 
   let ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -655,6 +668,101 @@ actor {
     true;
   };
 
+  // Set vote amount from live treasury balance (called by frontend when vote opens)
+  public shared func setVoteAmountFromTreasury(password : Text, voteId : Nat, amount : Text) : async Bool {
+    if (not isAdmin(password)) return false;
+    // Only set if not already set
+    let voteOpt = monthlyVotes.filter(func(v : MonthlyVote) : Bool { v.id == voteId }).values().next();
+    switch (voteOpt) {
+      case (null) { return false };
+      case (?v) {
+        if (v.totalVoteAmount != "") return true; // already set, skip
+        monthlyVotes := monthlyVotes.map(func(mv : MonthlyVote) : MonthlyVote {
+          if (mv.id == voteId) {
+            { id = mv.id; voteType = mv.voteType; month = mv.month; year = mv.year;
+              openTime = mv.openTime; closeTime = mv.closeTime; isFinalized = mv.isFinalized;
+              totalVoteAmount = amount };
+          } else { mv };
+        });
+        true;
+      };
+    };
+  };
+
+  //------------------------------ Canister Balance Query ------------------------------
+
+  // Returns live canister balances from both ledgers (in e8s)
+  public shared func getCanisterBalance() : async { icpE8s : Nat; bittyE8s : Nat } {
+    let icpLedger = actor("ryjl3-tyaaa-aaaaa-aaaba-cai") : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+    };
+    let bittyLedger2 = actor("qroj6-lyaaa-aaaam-qeqta-cai") : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+    };
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+    let icpBal = try { await icpLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+    let bittyBal = try { await bittyLedger2.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+    { icpE8s = icpBal; bittyE8s = bittyBal };
+  };
+
+  //------------------------------ Pending Distributions ------------------------------
+
+  public query func getPendingDistributions() : async [PendingDistribution] {
+    pendingDistributions;
+  };
+
+  func removePendingDistribution(isCustom : Bool, id : Nat) {
+    if (isCustom) {
+      pendingDistributions := pendingDistributions.filter(func(p : PendingDistribution) : Bool {
+        not (p.isCustom and p.proposalId == id)
+      });
+    } else {
+      pendingDistributions := pendingDistributions.filter(func(p : PendingDistribution) : Bool {
+        not (not p.isCustom and p.voteId == id)
+      });
+    };
+  };
+
+  //------------------------------ Treasury Return Helper ------------------------------
+
+  // After distribution, send remainder of canister balance back to treasury
+  func sendRemainderToTreasury(voteType : VoteType) : async () {
+    let ledgerId = switch (voteType) {
+      case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+      case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+    };
+    let ledger = actor(ledgerId) : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+      icrc1_transfer : ({
+        from_subaccount : ?Blob;
+        to : { owner : Principal; subaccount : ?Blob };
+        amount : Nat;
+        fee : ?Nat;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+      }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+    };
+    let fee : Nat = 10000;
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+    try {
+      let balance = await ledger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null });
+      if (balance > fee * 2) {
+        let sendAmount = balance - fee;
+        let treasuryPrincipal = Principal.fromText(WALLET_PRINCIPAL);
+        ignore await ledger.icrc1_transfer({
+          from_subaccount = null;
+          to = { owner = treasuryPrincipal; subaccount = null };
+          amount = if (sendAmount > fee) sendAmount - fee else 0;
+          fee = ?fee;
+          memo = null;
+          created_at_time = null;
+        });
+      };
+    } catch (_) {};
+  };
+
+  //------------------------------ Finalize Vote (with auto-distribution) ------------------------------
+
   public shared func finalizeVote(password : Text, voteId : Nat) : async Bool {
     if (not isAdmin(password)) return false;
     var foundVote : ?MonthlyVote = null;
@@ -679,6 +787,8 @@ actor {
             losingLabel := r.optionLabel;
           };
         };
+        // Remove any previous pool entry for this vote (avoid duplicates)
+        rewardsPools := rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId != voteId });
         let entry : RewardsPoolEntry = {
           voteId = voteId;
           voteType = v.voteType;
@@ -688,6 +798,39 @@ actor {
           distributed = false;
         };
         rewardsPools := rewardsPools.concat([entry]);
+
+        // Attempt auto-distribution
+        let totalPool = parseNatText(v.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (v.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            // Sufficient funds: auto-distribute
+            ignore await distributeRewardsInternal(voteId, entry);
+            // Send remainder back to treasury
+            ignore sendRemainderToTreasury(v.voteType);
+          } else {
+            // Insufficient: add to pending
+            removePendingDistribution(false, voteId);
+            let pending : PendingDistribution = {
+              isCustom = false;
+              voteId = voteId;
+              proposalId = 0;
+              voteType = v.voteType;
+              amountNeeded = rewardsTotal.toText();
+              title = getVoteTitle(voteId);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
         true;
       };
     };
@@ -740,107 +883,120 @@ actor {
     };
   };
 
-  // Real on-chain reward distribution for monthly votes
+  //------------------------------ Internal Distribution Logic ------------------------------
+
+  // Internal: execute distribution for a monthly vote pool entry
+  func distributeRewardsInternal(voteId : Nat, pool : RewardsPoolEntry) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
+    let totalPool = parseNatText(pool.poolAmount);
+    if (totalPool == 0 or pool.losingOptionPct == 0) {
+      rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+        if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+      });
+      removePendingDistribution(false, voteId);
+      return { success = true; transferCount = 0; errors = [] };
+    };
+    let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+    let allocs = voteAllocations.filter(func(a : VoteAllocation) : Bool { a.voteId == voteId });
+    let labels = getOptionsForVote(voteId);
+    type VoterShare = { principal : Text; eligiblePower : Nat };
+    var voterShares : [VoterShare] = [];
+    var totalEligible : Nat = 0;
+    for (a in allocs.values()) {
+      let losingPct = if (pool.losingOptionLabel == labels.0) { a.pctA }
+                      else if (pool.losingOptionLabel == labels.1) { a.pctB }
+                      else { a.pctC };
+      let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
+      let eligible = a.votingPower * nonLosingPct / 100;
+      if (eligible > 0) {
+        voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
+        totalEligible += eligible;
+      };
+    };
+    if (totalEligible == 0) {
+      rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+        if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+      });
+      removePendingDistribution(false, voteId);
+      return { success = true; transferCount = 0; errors = [] };
+    };
+    let ledgerId = switch (pool.voteType) {
+      case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+      case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+    };
+    let ledger = actor(ledgerId) : actor {
+      icrc1_transfer : ({
+        from_subaccount : ?Blob;
+        to : { owner : Principal; subaccount : ?Blob };
+        amount : Nat;
+        fee : ?Nat;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+      }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+    };
+    let fee : Nat = 10000;
+    var transferCount = 0;
+    var errors : [Text] = [];
+    let voteTitle = getVoteTitle(voteId);
+    let nowTs = Time.now();
+    for (vs in voterShares.values()) {
+      let amount = rewardsTotal * vs.eligiblePower / totalEligible;
+      if (amount > fee) {
+        try {
+          let result = await ledger.icrc1_transfer({
+            from_subaccount = null;
+            to = { owner = Principal.fromText(vs.principal); subaccount = null };
+            amount = amount - fee;
+            fee = ?fee;
+            memo = null;
+            created_at_time = null;
+          });
+          switch (result) {
+            case (#Ok(_)) {
+              transferCount += 1;
+              let tx : RewardTransaction = {
+                id = nextRewardTxId;
+                recipient = vs.principal;
+                amount = amount - fee;
+                tokenType = pool.voteType;
+                timestamp = nowTs;
+                voteTitle = voteTitle;
+                voteId = voteId;
+                proposalId = 0;
+              };
+              rewardTransactions := rewardTransactions.concat([tx]);
+              nextRewardTxId += 1;
+            };
+            case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
+          };
+        } catch (_) {
+          errors := errors.concat(["Exception for " # vs.principal]);
+        };
+      };
+    };
+    rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
+      if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+    });
+    removePendingDistribution(false, voteId);
+    { success = true; transferCount; errors };
+  };
+
+  // Public: admin triggers distribution for monthly vote (also used for manual trigger after pending)
   public shared func distributeRewards(password : Text, voteId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
     if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
     let poolOpt = rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId == voteId }).values().next();
     switch (poolOpt) {
       case (null) { return { success = false; transferCount = 0; errors = ["Pool not found"] } };
       case (?pool) {
-        if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
-        let totalPool = parseNatText(pool.poolAmount);
-        if (totalPool == 0 or pool.losingOptionPct == 0) {
-          rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
-            if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-          });
-          return { success = true; transferCount = 0; errors = [] };
+        let result = await distributeRewardsInternal(voteId, pool);
+        if (result.success) {
+          // Send remainder back to treasury
+          ignore sendRemainderToTreasury(pool.voteType);
         };
-        let rewardsTotal = totalPool * pool.losingOptionPct / 100;
-        let allocs = voteAllocations.filter(func(a : VoteAllocation) : Bool { a.voteId == voteId });
-        let labels = getOptionsForVote(voteId);
-        type VoterShare = { principal : Text; eligiblePower : Nat };
-        var voterShares : [VoterShare] = [];
-        var totalEligible : Nat = 0;
-        for (a in allocs.values()) {
-          let losingPct = if (pool.losingOptionLabel == labels.0) { a.pctA }
-                          else if (pool.losingOptionLabel == labels.1) { a.pctB }
-                          else { a.pctC };
-          let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
-          let eligible = a.votingPower * nonLosingPct / 100;
-          if (eligible > 0) {
-            voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
-            totalEligible += eligible;
-          };
-        };
-        if (totalEligible == 0) {
-          rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
-            if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-          });
-          return { success = true; transferCount = 0; errors = [] };
-        };
-        let ledgerId = switch (pool.voteType) {
-          case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
-          case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
-        };
-        let ledger = actor(ledgerId) : actor {
-          icrc1_transfer : ({
-            from_subaccount : ?Blob;
-            to : { owner : Principal; subaccount : ?Blob };
-            amount : Nat;
-            fee : ?Nat;
-            memo : ?Blob;
-            created_at_time : ?Nat64;
-          }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
-        };
-        let fee : Nat = 10000;
-        var transferCount = 0;
-        var errors : [Text] = [];
-        let voteTitle = getVoteTitle(voteId);
-        let nowTs = Time.now();
-        for (vs in voterShares.values()) {
-          let amount = rewardsTotal * vs.eligiblePower / totalEligible;
-          if (amount > fee) {
-            try {
-              let result = await ledger.icrc1_transfer({
-                from_subaccount = null;
-                to = { owner = Principal.fromText(vs.principal); subaccount = null };
-                amount = amount - fee;
-                fee = ?fee;
-                memo = null;
-                created_at_time = null;
-              });
-              switch (result) {
-                case (#Ok(_)) {
-                  transferCount += 1;
-                  // Record reward transaction
-                  let tx : RewardTransaction = {
-                    id = nextRewardTxId;
-                    recipient = vs.principal;
-                    amount = amount - fee;
-                    tokenType = pool.voteType;
-                    timestamp = nowTs;
-                    voteTitle = voteTitle;
-                    voteId = voteId;
-                    proposalId = 0;
-                  };
-                  rewardTransactions := rewardTransactions.concat([tx]);
-                  nextRewardTxId += 1;
-                };
-                case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
-              };
-            } catch (_) {
-              errors := errors.concat(["Exception for " # vs.principal]);
-            };
-          };
-        };
-        rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
-          if (r.voteId == voteId) { { voteId = r.voteId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-        });
-        { success = true; transferCount; errors };
+        result;
       };
     };
   };
-
 
   public query func getRewardsPools() : async [RewardsPoolEntry] {
     rewardsPools;
@@ -943,10 +1099,8 @@ actor {
         let allocs = customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
         let nOpts = p.options.size();
         if (nOpts == 0) return [];
-        // sum weighted pct per option
         var sumPower : Nat = 0;
         for (a in allocs.values()) { sumPower += a.votingPower; };
-        // build results
         var results : [CustomVoteResult] = [];
         var i = 0;
         while (i < nOpts) {
@@ -1010,6 +1164,8 @@ actor {
             losingLabel := r.optionLabel;
           };
         };
+        // Remove any previous pool entry for this proposal (avoid duplicates)
+        customRewardsPools := customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId != proposalId });
         let entry : CustomRewardsPoolEntry = {
           proposalId = proposalId;
           voteType = p.voteType;
@@ -1019,6 +1175,36 @@ actor {
           distributed = false;
         };
         customRewardsPools := customRewardsPools.concat([entry]);
+
+        // Attempt auto-distribution
+        let totalPool = parseNatText(p.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (p.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            ignore await distributeCustomRewardsInternal(proposalId, entry);
+            ignore sendRemainderToTreasury(p.voteType);
+          } else {
+            removePendingDistribution(true, proposalId);
+            let pending : PendingDistribution = {
+              isCustom = true;
+              voteId = 0;
+              proposalId = proposalId;
+              voteType = p.voteType;
+              amountNeeded = rewardsTotal.toText();
+              title = getCustomProposalTitle(proposalId);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
         true;
       };
     };
@@ -1039,121 +1225,131 @@ actor {
     true;
   };
 
-  // Real on-chain reward distribution for custom proposals
+  // Internal: execute distribution for a custom proposal pool entry
+  func distributeCustomRewardsInternal(proposalId : Nat, pool : CustomRewardsPoolEntry) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
+    let totalPool = parseNatText(pool.poolAmount);
+    if (totalPool == 0 or pool.losingOptionPct == 0) {
+      customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+        if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+      });
+      removePendingDistribution(true, proposalId);
+      return { success = true; transferCount = 0; errors = [] };
+    };
+    let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+    let proposalOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
+    var losingOptionIndex : ?Nat = null;
+    switch (proposalOpt) {
+      case (null) {};
+      case (?p) {
+        var idx : Nat = 0;
+        for (opt in p.options.vals()) {
+          if (opt == pool.losingOptionLabel) { losingOptionIndex := ?idx };
+          idx += 1;
+        };
+      };
+    };
+    let allocs = customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
+    type VoterShare = { principal : Text; eligiblePower : Nat };
+    var voterShares : [VoterShare] = [];
+    var totalEligible : Nat = 0;
+    for (a in allocs.values()) {
+      var losingPct : Nat = 0;
+      switch (losingOptionIndex) {
+        case (null) {};
+        case (?li) {
+          for (alloc in a.allocations.vals()) {
+            if (alloc.optionIndex == li) { losingPct := alloc.pct };
+          };
+        };
+      };
+      let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
+      let eligible = a.votingPower * nonLosingPct / 100;
+      if (eligible > 0) {
+        voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
+        totalEligible += eligible;
+      };
+    };
+    if (totalEligible == 0) {
+      customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+        if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+      });
+      removePendingDistribution(true, proposalId);
+      return { success = true; transferCount = 0; errors = [] };
+    };
+    let ledgerId = switch (pool.voteType) {
+      case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+      case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+    };
+    let ledger = actor(ledgerId) : actor {
+      icrc1_transfer : ({
+        from_subaccount : ?Blob;
+        to : { owner : Principal; subaccount : ?Blob };
+        amount : Nat;
+        fee : ?Nat;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+      }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+    };
+    let fee : Nat = 10000;
+    var transferCount = 0;
+    var errors : [Text] = [];
+    let proposalTitle = getCustomProposalTitle(proposalId);
+    let nowTs = Time.now();
+    for (vs in voterShares.values()) {
+      let amount = rewardsTotal * vs.eligiblePower / totalEligible;
+      if (amount > fee) {
+        try {
+          let result = await ledger.icrc1_transfer({
+            from_subaccount = null;
+            to = { owner = Principal.fromText(vs.principal); subaccount = null };
+            amount = amount - fee;
+            fee = ?fee;
+            memo = null;
+            created_at_time = null;
+          });
+          switch (result) {
+            case (#Ok(_)) {
+              transferCount += 1;
+              let tx : RewardTransaction = {
+                id = nextRewardTxId;
+                recipient = vs.principal;
+                amount = amount - fee;
+                tokenType = pool.voteType;
+                timestamp = nowTs;
+                voteTitle = proposalTitle;
+                voteId = 0;
+                proposalId = proposalId;
+              };
+              rewardTransactions := rewardTransactions.concat([tx]);
+              nextRewardTxId += 1;
+            };
+            case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
+          };
+        } catch (_) {
+          errors := errors.concat(["Exception for " # vs.principal]);
+        };
+      };
+    };
+    customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
+      if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
+    });
+    removePendingDistribution(true, proposalId);
+    { success = true; transferCount; errors };
+  };
+
+  // Public: admin triggers distribution for custom proposals (also manual trigger for pending)
   public shared func distributeCustomRewards(password : Text, proposalId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
     if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
     let poolOpt = customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId == proposalId }).values().next();
     switch (poolOpt) {
       case (null) { return { success = false; transferCount = 0; errors = ["Pool not found"] } };
       case (?pool) {
-        if (pool.distributed) return { success = false; transferCount = 0; errors = ["Already distributed"] };
-        let totalPool = parseNatText(pool.poolAmount);
-        if (totalPool == 0 or pool.losingOptionPct == 0) {
-          customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
-            if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-          });
-          return { success = true; transferCount = 0; errors = [] };
+        let result = await distributeCustomRewardsInternal(proposalId, pool);
+        if (result.success) {
+          ignore sendRemainderToTreasury(pool.voteType);
         };
-        let rewardsTotal = totalPool * pool.losingOptionPct / 100;
-        // Find losing option index for this proposal
-        let proposalOpt = customProposals.filter(func(p : CustomProposal) : Bool { p.id == proposalId }).values().next();
-        var losingOptionIndex : ?Nat = null;
-        switch (proposalOpt) {
-          case (null) {};
-          case (?p) {
-            var idx : Nat = 0;
-            for (opt in p.options.vals()) {
-              if (opt == pool.losingOptionLabel) { losingOptionIndex := ?idx };
-              idx += 1;
-            };
-          };
-        };
-        let allocs = customVoteAllocations.filter(func(a : CustomVoteAllocation) : Bool { a.proposalId == proposalId });
-        type VoterShare = { principal : Text; eligiblePower : Nat };
-        var voterShares : [VoterShare] = [];
-        var totalEligible : Nat = 0;
-        for (a in allocs.values()) {
-          var losingPct : Nat = 0;
-          switch (losingOptionIndex) {
-            case (null) {};
-            case (?li) {
-              for (alloc in a.allocations.vals()) {
-                if (alloc.optionIndex == li) { losingPct := alloc.pct };
-              };
-            };
-          };
-          let nonLosingPct : Nat = if (losingPct >= 100) { 0 } else { 100 - losingPct };
-          let eligible = a.votingPower * nonLosingPct / 100;
-          if (eligible > 0) {
-            voterShares := voterShares.concat([{ principal = a.voterPrincipal; eligiblePower = eligible }]);
-            totalEligible += eligible;
-          };
-        };
-        if (totalEligible == 0) {
-          customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
-            if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-          });
-          return { success = true; transferCount = 0; errors = [] };
-        };
-        let ledgerId = switch (pool.voteType) {
-          case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
-          case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
-        };
-        let ledger = actor(ledgerId) : actor {
-          icrc1_transfer : ({
-            from_subaccount : ?Blob;
-            to : { owner : Principal; subaccount : ?Blob };
-            amount : Nat;
-            fee : ?Nat;
-            memo : ?Blob;
-            created_at_time : ?Nat64;
-          }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
-        };
-        let fee : Nat = 10000;
-        var transferCount = 0;
-        var errors : [Text] = [];
-        let proposalTitle = getCustomProposalTitle(proposalId);
-        let nowTs = Time.now();
-        for (vs in voterShares.values()) {
-          let amount = rewardsTotal * vs.eligiblePower / totalEligible;
-          if (amount > fee) {
-            try {
-              let result = await ledger.icrc1_transfer({
-                from_subaccount = null;
-                to = { owner = Principal.fromText(vs.principal); subaccount = null };
-                amount = amount - fee;
-                fee = ?fee;
-                memo = null;
-                created_at_time = null;
-              });
-              switch (result) {
-                case (#Ok(_)) {
-                  transferCount += 1;
-                  // Record reward transaction
-                  let tx : RewardTransaction = {
-                    id = nextRewardTxId;
-                    recipient = vs.principal;
-                    amount = amount - fee;
-                    tokenType = pool.voteType;
-                    timestamp = nowTs;
-                    voteTitle = proposalTitle;
-                    voteId = 0;
-                    proposalId = proposalId;
-                  };
-                  rewardTransactions := rewardTransactions.concat([tx]);
-                  nextRewardTxId += 1;
-                };
-                case (#Err(_)) { errors := errors.concat(["Transfer failed for " # vs.principal]) };
-              };
-            } catch (_) {
-              errors := errors.concat(["Exception for " # vs.principal]);
-            };
-          };
-        };
-        customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
-          if (r.proposalId == proposalId) { { proposalId = r.proposalId; voteType = r.voteType; losingOptionLabel = r.losingOptionLabel; losingOptionPct = r.losingOptionPct; poolAmount = r.poolAmount; distributed = true } } else { r }
-        });
-        { success = true; transferCount; errors };
+        result;
       };
     };
   };

@@ -1,37 +1,45 @@
 # BITTY ICP BANK
 
 ## Current State
-- The voting page has a sign-in gate (II and Plug buttons) shown when not signed in
-- The "My BITTY ICP Bank Wallet" (MyWalletPanel) renders when signed in, always visible
-- The "BOOST YOUR VOTING POWER" banner only shows when signed in
-- The Vote nav button in App.tsx reads just "Vote" with no icon
-- The Bitty CEO mascot with speech bubble exists on the main page at `/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png`
+The app has:
+- Monthly scheduled votes (ICP end-of-month, BITTYICP on 15th) and admin custom proposals
+- A `distributeRewards` / `distributeCustomRewards` backend function that executes real on-chain ICRC-1 transfers to winning voters
+- Admin manually sets the vote/pool amount via `setVoteAmount` / `setCustomProposalAmount`
+- Admin manually clicks "Distribute Rewards" to trigger distribution
+- After distribution, no remainder is sent back to treasury
+- No auto-population of the vote amount from live treasury balance
+- No auto-distribution trigger on finalization
 
 ## Requested Changes (Diff)
 
 ### Add
-- A Bitty CEO mascot on the voting page (same image: `/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png`) with a cartoon speech bubble reading "MY BITTY ICP SAVINGS" -- placed above the sign-in gate / above the wallet section
-- The mascot/bubble is clickable: toggles `walletOpen` state to show/hide the MyWalletPanel
-- When user is NOT signed in and clicks the mascot: expand the panel to show the sign-in prompt (II + Plug buttons)
-- The "BOOST YOUR VOTING POWER" banner should be visible to ALL users (not just signed-in) -- place it below the mascot/bubble toggle area, above the sign-in buttons
-- A 💳 emoji before "Vote" text in the nav button in App.tsx (line 1233)
+- `checkCanisterBalance` backend function: queries the canister's live ICP or BITTYICP balance from the ledger
+- `autoDistributeOnFinalize` logic: when a vote/proposal is finalized (timer OR admin early-finalize), attempt distribution immediately if canister balance >= required amount
+- `returnRemainderToTreasury` logic: after distribution completes, transfer remaining canister balance (minus fees) back to treasury principal `ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe`
+- `getCanisterBalance` public query: returns current ICP and BITTYICP balance of canister for frontend to display
+- `getPendingDistributions` query: returns any finalized pools where balance was insufficient at finalization time (pending admin manual trigger)
+- Scheduled treasury vote auto-populate: when a monthly vote opens (or when `getMonthlyVotes` is called for an upcoming open), automatically read the live treasury wallet balance and set it as the vote amount
+- Frontend: "PENDING DISTRIBUTION" admin notice when a pool was finalized but balance was insufficient -- shows the exact amount needed, with a manual "Distribute Now" button
 
 ### Modify
-- MyWalletPanel: hidden by default (`walletOpen` state = false), revealed when user clicks the mascot or bubble
-- Sign-in gate: becomes part of the collapsible wallet panel -- shown inside when not signed in, full wallet panel when signed in
-- "BOOST YOUR VOTING POWER" banner: remove the `isSignedIn &&` condition so it shows for everyone
-- The voting page layout around lines 3152-3320 in VotingPage.tsx needs restructuring: mascot at top -> boost banner always visible -> collapsible wallet section (sign-in or full wallet panel based on auth state)
+- `finalizeVote` backend: after creating the rewards pool entry, call the new auto-distribution check inline (async)
+- `finalizeCustomProposal` backend: same -- auto-distribute after creating pool entry
+- `distributeRewards` / `distributeCustomRewards`: after all voter transfers, calculate remainder and auto-send back to treasury
+- Frontend VotingPage: add "PENDING DISTRIBUTION" admin panel section showing any pools awaiting manual trigger due to insufficient funds
 
 ### Remove
-- The standalone sign-in gate block (lines 3152-3280 in VotingPage.tsx) as a top-level always-visible element -- move sign-in buttons into the collapsible wallet section
+- Nothing removed; "Mark as Distributed" flag-only methods remain for legacy safety
 
 ## Implementation Plan
-1. In App.tsx: add 💳 before "Vote" text in the nav button (line 1233)
-2. In VotingPage.tsx:
-   - Add `walletOpen` useState (default false)
-   - Add Bitty CEO mascot + "MY BITTY ICP SAVINGS" speech bubble section above sign-in/wallet area -- same cartoon bubble style as main page (white box, thick black border, rounded, shadow, tail pointing down, Impact/bold font)
-   - Make mascot + bubble clickable to toggle `walletOpen`
-   - Move the sign-in gate inside the collapsible wallet panel (AnimatePresence with height animation)
-   - "BOOST YOUR VOTING POWER" banner: show always (remove isSignedIn gate), place it between mascot and the collapsible wallet section
-   - The collapsible section: when `walletOpen && !isSignedIn` show sign-in buttons; when `walletOpen && isSignedIn` show full MyWalletPanel
-   - When user signs in successfully, keep walletOpen = true so they see their wallet
+1. Add `getCanisterBalance` query to backend that calls both ICP and BITTYICP ledgers
+2. Add treasury return helper: after distribution, compute remainder and transfer to treasury principal
+3. Add `pendingDistributions` stable variable tracking finalized-but-underfunded pools
+4. Modify `finalizeVote` and `finalizeCustomProposal` to:
+   a. Check canister balance after creating the pool entry
+   b. If sufficient: call distribution inline and send remainder back to treasury
+   c. If insufficient: add to `pendingDistributions` stable list with amount needed
+5. Modify `distributeRewards` and `distributeCustomRewards` to send remainder to treasury after voter transfers
+6. Add `getPendingDistributions` query for frontend admin to see unfunded pools
+7. Add `removePendingDistribution` called automatically after successful distribution
+8. Frontend: add "PENDING DISTRIBUTION" notice in admin section of VotingPage showing pools needing funds, with a "Distribute Now" button that calls the existing distribute function
+9. For scheduled vote auto-populate: set the vote amount from the live treasury balance when the vote opens (the frontend already fetches treasury balances; pass current treasury balance into `setVoteAmount` when a vote transitions to LIVE status)

@@ -121,6 +121,25 @@ export interface DistributeResult {
   errors: string[];
 }
 
+export interface CanisterBalance {
+  icpE8s: bigint;
+  bittyE8s: bigint;
+}
+
+export interface PendingDistribution {
+  isCustom: boolean;
+  voteId: bigint;
+  proposalId: bigint;
+  voteType: VoteType;
+  amountNeeded: string;
+  title: string;
+}
+
+export interface TotalRewardsDistributed {
+  totalICP: bigint;
+  totalBITTY: bigint;
+}
+
 export interface _SERVICE {
   adminLogin: (password: string) => Promise<boolean>;
   getManualBalances: () => Promise<ManualBalances>;
@@ -139,6 +158,7 @@ export interface _SERVICE {
   getVoteAllocations: (voteId: bigint) => Promise<VoteAllocation[]>;
   getVoteResults: (voteId: bigint) => Promise<VoteResult[]>;
   setVoteAmount: (password: string, voteId: bigint, amount: string) => Promise<boolean>;
+  setVoteAmountFromTreasury: (password: string, voteId: bigint, amount: string) => Promise<boolean>;
   finalizeVote: (password: string, voteId: bigint) => Promise<boolean>;
   markRewardsDistributed: (password: string, voteId: bigint) => Promise<boolean>;
   distributeRewards: (password: string, voteId: bigint) => Promise<DistributeResult>;
@@ -146,6 +166,10 @@ export interface _SERVICE {
   setNeuronTopupAddress: (password: string, addr: string) => Promise<boolean>;
   setGamesWallet: (password: string, addr: string) => Promise<boolean>;
   getAdminConfig: () => Promise<AdminConfig>;
+  // Canister balance
+  getCanisterBalance: () => Promise<CanisterBalance>;
+  // Pending distributions
+  getPendingDistributions: () => Promise<PendingDistribution[]>;
   // Custom proposals
   createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint) => Promise<[] | [CustomProposal]>;
   getCustomProposals: () => Promise<CustomProposal[]>;
@@ -161,9 +185,19 @@ export interface _SERVICE {
   // Reward transaction history
   getMyRewardTransactions: (principal: string) => Promise<RewardTransaction[]>;
   getAllRewardTransactions: (password: string) => Promise<RewardTransaction[]>;
+  getTotalRewardsDistributed: () => Promise<TotalRewardsDistributed>;
   // Chat
   addChatMessage: (voteId: bigint, author: string, message: string) => Promise<[] | [ChatMessage]>;
   getChatMessages: (voteId: bigint) => Promise<ChatMessage[]>;
+  // Wallet verification
+  initWalletVerification: (externalWallet: string) => Promise<{ ok: bigint } | { err: string }>;
+  confirmWalletVerification: (externalWallet: string) => Promise<{ ok: null } | { err: string }>;
+  getMyVerifiedWallets: () => Promise<string[]>;
+  isExternalWalletClaimed: (wallet: string) => Promise<boolean>;
+  getWalletOwner: (wallet: string) => Promise<[] | [string]>;
+  verifyExternalWallet: (externalWallet: string) => Promise<{ ok: null } | { err: string }>;
+  adminResetVerifiedWallets: (password: string) => Promise<boolean>;
+  unverifyWallet: (externalWallet: string) => Promise<boolean>;
 }
 
 export declare const createActor: (canisterId: string) => ActorSubclass<_SERVICE>;

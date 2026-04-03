@@ -48,7 +48,12 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
-import type { MonthlyVote, RewardsPoolEntry, VoteResult } from "./backend.d";
+import type {
+  MonthlyVote,
+  PendingDistribution,
+  RewardsPoolEntry,
+  VoteResult,
+} from "./backend.d";
 import { loadConfig } from "./config";
 import { idlFactory as backendIdlFactory } from "./declarations/backend.did";
 // ─── E8s conversion helpers ───────────────────────────────────────────────────
@@ -1389,19 +1394,25 @@ function VoteCard({
               </Button>
             </div>
             {!vote.isFinalized && (
-              <Button
-                data-ocid="vote.confirm_button"
-                variant="outline"
-                size="sm"
-                onClick={finalizeVote}
-                disabled={finalizing}
-                className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 w-full"
-              >
-                {finalizing ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Finalize Vote & Create Rewards Pool
-              </Button>
+              <div className="space-y-1">
+                <Button
+                  data-ocid="vote.confirm_button"
+                  variant="outline"
+                  size="sm"
+                  onClick={finalizeVote}
+                  disabled={finalizing}
+                  className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 w-full"
+                >
+                  {finalizing ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Finalize Vote & Create Rewards Pool
+                </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  Auto-distributes if canister is funded. Remainder returns to
+                  treasury.
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -1554,6 +1565,12 @@ function RewardsSection({
                     </>
                   )}
                 </Button>
+              )}
+              {!p.distributed && (
+                <p className="text-xs text-gray-500 mt-1 text-center">
+                  After distributing, any remaining funds are automatically
+                  returned to the treasury.
+                </p>
               )}
             </div>
           ))}
@@ -2366,19 +2383,25 @@ function CustomProposalCard({
               </Button>
             </div>
             {(isOpen || isExpired) && (
-              <Button
-                data-ocid="proposal.confirm_button"
-                size="sm"
-                onClick={finalizeVote}
-                disabled={finalizing}
-                variant="outline"
-                className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-xs w-full"
-              >
-                {finalizing ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                ) : null}
-                Finalize Proposal
-              </Button>
+              <div className="space-y-1">
+                <Button
+                  data-ocid="proposal.confirm_button"
+                  size="sm"
+                  onClick={finalizeVote}
+                  disabled={finalizing}
+                  variant="outline"
+                  className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-xs w-full"
+                >
+                  {finalizing ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                  ) : null}
+                  Finalize Proposal
+                </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  Auto-distributes if canister is funded. Remainder returns to
+                  treasury.
+                </p>
+              </div>
             )}
             {isFinalized && (
               <Button
@@ -2794,27 +2817,128 @@ function CustomRewardsBanner({
                 </div>
               </div>
               {isAdmin && !pool.distributed && (
-                <Button
-                  data-ocid="rewards.confirm_button"
-                  onClick={() => markDistributed(pool.proposalId)}
-                  disabled={marking === pool.proposalId}
-                  className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm py-3"
-                >
-                  {marking === pool.proposalId ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <Gift className="w-4 h-4 mr-2" />
-                  )}
-                  {marking === pool.proposalId
-                    ? "Distributing..."
-                    : "Distribute Rewards"}
-                </Button>
+                <>
+                  <Button
+                    data-ocid="rewards.confirm_button"
+                    onClick={() => markDistributed(pool.proposalId)}
+                    disabled={marking === pool.proposalId}
+                    className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm py-3"
+                  >
+                    {marking === pool.proposalId ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Gift className="w-4 h-4 mr-2" />
+                    )}
+                    {marking === pool.proposalId
+                      ? "Distributing..."
+                      : "Distribute Rewards"}
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-1 text-center">
+                    After distributing, any remaining funds are automatically
+                    returned to the treasury.
+                  </p>
+                </>
               )}
             </div>
           );
         })}
       </div>
     </motion.div>
+  );
+}
+
+// ─── PendingDistributionRow ─────────────────────────────────────────────────
+
+function PendingDistributionRow({
+  item,
+  actor,
+  adminPassword,
+  index,
+  onSuccess,
+}: {
+  item: PendingDistribution;
+  actor: any;
+  adminPassword: string;
+  index: number;
+  onSuccess: () => void;
+}) {
+  const [distributing, setDistributing] = useState(false);
+  const isICP = "ICP" in item.voteType;
+  const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
+  const amountHuman = fromE8s(item.amountNeeded);
+
+  async function distribute() {
+    if (!actor) return;
+    setDistributing(true);
+    try {
+      let result: any;
+      if (item.isCustom) {
+        result = await (actor as any).distributeCustomRewards(
+          adminPassword,
+          item.proposalId,
+        );
+      } else {
+        result = await (actor as any).distributeRewards(
+          adminPassword,
+          item.voteId,
+        );
+      }
+      if (result?.success) {
+        toast.success(
+          `Rewards distributed! ${Number(result.transferCount)} transfers sent.`,
+        );
+        if (result.errors && result.errors.length > 0) {
+          toast.error(`Some errors: ${result.errors.slice(0, 2).join(", ")}`);
+        }
+        onSuccess();
+      } else {
+        const errs = result?.errors?.join(", ") ?? "Unknown error";
+        toast.error(`Distribution failed: ${errs}`);
+      }
+    } catch (e: any) {
+      toast.error(`Error: ${e?.message}`);
+    } finally {
+      setDistributing(false);
+    }
+  }
+
+  return (
+    <div
+      className="flex items-center justify-between gap-3 bg-black/30 rounded-xl border border-amber-500/30 p-3"
+      data-ocid={`pending_distribution.item.${index}`}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-amber-200 truncate">
+          {item.title}
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {tokenLabel} · Needs:{" "}
+          <span className="text-amber-300 font-mono">
+            {amountHuman.toLocaleString(undefined, {
+              minimumFractionDigits: 4,
+              maximumFractionDigits: 4,
+            })}{" "}
+            {isICP ? "ICP" : "BITTYICP"}
+          </span>
+        </p>
+      </div>
+      <Button
+        data-ocid={`pending_distribution.confirm_button.${index}`}
+        size="sm"
+        onClick={distribute}
+        disabled={distributing}
+        className="bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shrink-0"
+      >
+        {distributing ? (
+          <>
+            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            Sending…
+          </>
+        ) : (
+          "DISTRIBUTE NOW"
+        )}
+      </Button>
+    </div>
   );
 }
 
@@ -2880,6 +3004,9 @@ export default function VotingPage({
   const [loadingVotes, setLoadingVotes] = useState(false);
   const [customProposals, setCustomProposals] = useState<CustomProposal[]>([]);
   const [customPools, setCustomPools] = useState<CustomRewardsPoolEntry[]>([]);
+  const [pendingDistributions, setPendingDistributions] = useState<
+    PendingDistribution[]
+  >([]);
 
   // Canister deposit address
   // Hardwired to the live production canister that holds the rewards funds
@@ -2933,12 +3060,15 @@ export default function VotingPage({
   }, [principal]);
 
   // Load votes on actor ready
+  const TREASURY_WALLET =
+    "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
+
   const loadVotes = useCallback(async () => {
     const a = actor as any;
     if (!a) return;
     setLoadingVotes(true);
     try {
-      const [allVotes, allPools, customProps, customPoolsData] =
+      const [allVotes, allPools, customProps, customPoolsData, pendingDists] =
         await Promise.all([
           a.getAllVotes().catch((e: unknown) => {
             console.error("getAllVotes failed:", e);
@@ -2950,17 +3080,67 @@ export default function VotingPage({
           }),
           a.getCustomProposals().catch(() => []),
           a.getCustomRewardsPools().catch(() => []),
+          a.getPendingDistributions
+            ? a.getPendingDistributions().catch(() => [])
+            : Promise.resolve([]),
         ]);
       setVotes(allVotes);
       setPools(allPools);
       setCustomProposals(customProps as CustomProposal[]);
       setCustomPools(customPoolsData as CustomRewardsPoolEntry[]);
+      setPendingDistributions(pendingDists as PendingDistribution[]);
+
+      // Auto-populate vote amount for LIVE scheduled votes with no amount set (admin only)
+      if (isAdmin && adminPassword && a.setVoteAmountFromTreasury) {
+        const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+        const liveVotes = (allVotes as MonthlyVote[]).filter((v) => {
+          const isLive =
+            v.openTime <= nowNs && nowNs <= v.closeTime && !v.isFinalized;
+          const hasNoAmount =
+            !v.totalVoteAmount ||
+            v.totalVoteAmount === "0" ||
+            v.totalVoteAmount === "";
+          return isLive && hasNoAmount;
+        });
+        // Fire-and-forget auto-populate
+        if (liveVotes.length > 0) {
+          (async () => {
+            for (const v of liveVotes) {
+              try {
+                let balanceE8s: bigint | null = null;
+                if ("ICP" in v.voteType) {
+                  balanceE8s = await getICPBalance(TREASURY_WALLET).catch(
+                    () => null,
+                  );
+                } else {
+                  balanceE8s = await getBITTYBalance(TREASURY_WALLET).catch(
+                    () => null,
+                  );
+                }
+                if (balanceE8s !== null && balanceE8s > 0n) {
+                  await a
+                    .setVoteAmountFromTreasury(
+                      adminPassword,
+                      v.id,
+                      balanceE8s.toString(),
+                    )
+                    .catch((e: unknown) =>
+                      console.warn("setVoteAmountFromTreasury failed:", e),
+                    );
+                }
+              } catch (e) {
+                console.warn("Auto-populate vote amount failed:", e);
+              }
+            }
+          })();
+        }
+      }
     } catch (e) {
       console.error("loadVotes failed:", e);
     } finally {
       setLoadingVotes(false);
     }
-  }, [actor]);
+  }, [actor, isAdmin, adminPassword]);
 
   useEffect(() => {
     if (actor) loadVotes();
@@ -3509,6 +3689,57 @@ export default function VotingPage({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* PENDING DISTRIBUTION WARNING (admin only)                           */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {isAdmin && pendingDistributions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border-2 border-amber-500/70 bg-amber-500/10 backdrop-blur-sm p-5 space-y-4"
+            data-ocid="pending_distribution.panel"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-lg">⚠️</span>
+              <div>
+                <p className="text-amber-300 font-extrabold text-sm uppercase tracking-widest">
+                  PENDING DISTRIBUTION — AWAITING FUNDS
+                </p>
+                <p className="text-xs text-amber-400/70 mt-0.5">
+                  These votes were finalized but the canister had insufficient
+                  funds to distribute automatically.
+                </p>
+              </div>
+              <span className="ml-auto text-xs font-bold bg-red-500/20 border border-red-500/50 text-red-400 px-2 py-0.5 rounded-full shrink-0">
+                ADMIN ONLY
+              </span>
+            </div>
+            <div className="space-y-3">
+              {pendingDistributions.map((pd, i) => (
+                <PendingDistributionRow
+                  key={`${String(pd.voteId)}-${String(pd.proposalId)}`}
+                  item={pd}
+                  actor={activeActor}
+                  adminPassword={adminPassword}
+                  index={i + 1}
+                  onSuccess={() =>
+                    setPendingDistributions((prev) =>
+                      prev.filter(
+                        (x) =>
+                          !(
+                            x.isCustom === pd.isCustom &&
+                            x.voteId === pd.voteId &&
+                            x.proposalId === pd.proposalId
+                          ),
+                      ),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* SECTION 1: SCHEDULED TREASURY PROPOSALS                            */}
