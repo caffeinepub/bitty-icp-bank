@@ -5,37 +5,14 @@ import {
   Coins,
   Gamepad2,
   Gift,
-  Rocket,
   Shield,
   Wallet,
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 export default function HowItWorksPage({ onBack }: { onBack: () => void }) {
-  // Generate random particle values once, stable across renders
-  const rockets = useRef(
-    Array.from({ length: 14 }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      angle: (Math.random() - 0.5) * 20,
-      duration: 4 + Math.random() * 5,
-      delay: Math.random() * 6,
-      size: 16 + Math.floor(Math.random() * 15),
-    })),
-  );
-
-  const coins = useRef(
-    Array.from({ length: 8 }, (_, i) => ({
-      id: i,
-      x: 5 + Math.random() * 90,
-      duration: 7 + Math.random() * 6,
-      delay: Math.random() * 8,
-      size: 14 + Math.floor(Math.random() * 10),
-    })),
-  );
-
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -309,57 +286,6 @@ export default function HowItWorksPage({ onBack }: { onBack: () => void }) {
       className="relative min-h-screen overflow-x-hidden"
       style={{ background: "#06091a" }}
     >
-      {/* ── Particle layer ── */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-        {rockets.current.map((r) => (
-          <motion.div
-            key={`rocket-${r.id}`}
-            className="absolute select-none"
-            style={{
-              left: `${r.x}%`,
-              bottom: "-40px",
-              fontSize: r.size,
-              rotate: r.angle,
-            }}
-            animate={{
-              y: ["-10vh", "-115vh"],
-              opacity: [0, 0.9, 0.9, 0],
-            }}
-            transition={{
-              duration: r.duration,
-              delay: r.delay,
-              repeat: Number.POSITIVE_INFINITY,
-              ease: "linear",
-            }}
-          >
-            🚀
-          </motion.div>
-        ))}
-        {coins.current.map((c) => (
-          <motion.div
-            key={`coin-${c.id}`}
-            className="absolute select-none"
-            style={{
-              left: `${c.x}%`,
-              bottom: "-30px",
-              fontSize: c.size,
-            }}
-            animate={{
-              y: ["0vh", "-110vh"],
-              opacity: [0, 0.5, 0.5, 0],
-            }}
-            transition={{
-              duration: c.duration,
-              delay: c.delay,
-              repeat: Number.POSITIVE_INFINITY,
-              ease: "linear",
-            }}
-          >
-            🪙
-          </motion.div>
-        ))}
-      </div>
-
       {/* ── Top gold glow ── */}
       <div
         className="fixed top-0 left-0 right-0 pointer-events-none"

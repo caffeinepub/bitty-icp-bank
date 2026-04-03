@@ -3265,7 +3265,7 @@ export default function VotingPage({
           <button
             type="button"
             onClick={() => onNavigate?.("how-it-works")}
-            className="border border-yellow-500 text-yellow-400 hover:bg-yellow-500/10 px-6 py-2 rounded-full font-bold text-sm transition-colors"
+            className="border-2 border-yellow-500 text-yellow-400 hover:bg-yellow-500/10 px-10 py-4 rounded-full font-bold text-2xl transition-colors"
             data-ocid="how_it_works.link.button"
           >
             HOW IT WORKS →
