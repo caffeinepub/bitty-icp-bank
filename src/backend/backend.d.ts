@@ -71,6 +71,12 @@ export interface CustomProposal {
   totalVoteAmount: string;
 }
 
+export interface CustomProposalMeta {
+  proposalId: bigint;
+  voteAmount: string;
+  destinationAddress: string;
+}
+
 export interface CustomOptionAlloc {
   optionIndex: bigint;
   pct: bigint;
@@ -171,7 +177,8 @@ export interface _SERVICE {
   // Pending distributions
   getPendingDistributions: () => Promise<PendingDistribution[]>;
   // Custom proposals
-  createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint) => Promise<[] | [CustomProposal]>;
+  createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string) => Promise<[] | [CustomProposal]>;
+  getCustomProposalMeta: (proposalId: bigint) => Promise<[] | [CustomProposalMeta]>;
   getCustomProposals: () => Promise<CustomProposal[]>;
   castCustomVote: (proposalId: bigint, voterPrincipal: string, allocations: CustomOptionAlloc[], votingPower: bigint) => Promise<boolean>;
   hasVotedOnCustomProposal: (proposalId: bigint, voterPrincipal: string) => Promise<boolean>;

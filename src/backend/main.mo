@@ -117,6 +117,13 @@ actor {
     totalVoteAmount : Text;
   };
 
+  // Side-car type to store extra data without breaking stable type migration
+  type CustomProposalMeta = {
+    proposalId : Nat;
+    voteAmount : Text;
+    destinationAddress : Text;
+  };
+
   type CustomOptionAlloc = {
     optionIndex : Nat;
     pct : Nat;
@@ -198,6 +205,7 @@ actor {
   stable var nextCustomProposalId : Nat = 1;
   stable var customVoteAllocations : [CustomVoteAllocation] = [];
   stable var customRewardsPools : [CustomRewardsPoolEntry] = [];
+  stable var customProposalMeta : [CustomProposalMeta] = [];
 
   // Reward transaction history
   stable var rewardTransactions : [RewardTransaction] = [];
@@ -1027,11 +1035,15 @@ actor {
     voteType : VoteType,
     options : [Text],
     closeTimeNs : Int,
+    voteAmount : Text,
+    destinationAddress : Text,
   ) : async ?CustomProposal {
     if (not isAdmin(password)) return null;
     if (options.size() < 2 or options.size() > 6) return null;
+    if (voteAmount == "" or destinationAddress == "") return null;
+    let proposalId = nextCustomProposalId;
     let proposal : CustomProposal = {
-      id = nextCustomProposalId;
+      id = proposalId;
       title = title;
       description = description;
       voteType = voteType;
@@ -1039,11 +1051,22 @@ actor {
       openTime = Time.now();
       closeTime = closeTimeNs;
       isFinalized = false;
-      totalVoteAmount = "";
+      totalVoteAmount = voteAmount;
     };
     customProposals := customProposals.concat([proposal]);
+    // Store meta (voteAmount, destinationAddress) in side-car
+    let meta : CustomProposalMeta = {
+      proposalId = proposalId;
+      voteAmount = voteAmount;
+      destinationAddress = destinationAddress;
+    };
+    customProposalMeta := customProposalMeta.concat([meta]);
     nextCustomProposalId += 1;
     ?proposal;
+  };
+
+  public query func getCustomProposalMeta(proposalId : Nat) : async ?CustomProposalMeta {
+    customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
   };
 
   public query func getCustomProposals() : async [CustomProposal] {

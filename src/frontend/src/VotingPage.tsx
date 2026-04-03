@@ -2458,6 +2458,8 @@ function CreateProposalForm({
   const [voteType, setVoteType] = useState<"ICP" | "BITTYICP">("ICP");
   const [options, setOptions] = useState(["", ""]);
   const [endDateTime, setEndDateTime] = useState("");
+  const [voteAmount, setVoteAmount] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const activeActor = actor; // uses passed actor prop
 
@@ -2480,6 +2482,18 @@ function CreateProposalForm({
       toast.error("Please fill in all fields and options.");
       return;
     }
+    if (
+      !voteAmount.trim() ||
+      Number.isNaN(Number(voteAmount)) ||
+      Number(voteAmount) <= 0
+    ) {
+      toast.error("Please enter a valid vote amount.");
+      return;
+    }
+    if (!destinationAddress.trim()) {
+      toast.error("Please enter a destination address for the winning tokens.");
+      return;
+    }
     const closeTimeNs =
       BigInt(new Date(endDateTime).getTime()) * BigInt(1_000_000);
     const voteTypeArg = voteType === "ICP" ? { ICP: null } : { BITTYICP: null };
@@ -2497,6 +2511,8 @@ function CreateProposalForm({
         voteTypeArg,
         options.map((o) => o.trim()),
         closeTimeNs,
+        voteAmount.trim(),
+        destinationAddress.trim(),
       );
       if (result !== null && result !== undefined) {
         toast.success("Proposal created successfully!");
@@ -2504,6 +2520,8 @@ function CreateProposalForm({
         setDescription("");
         setOptions(["", ""]);
         setEndDateTime("");
+        setVoteAmount("");
+        setDestinationAddress("");
         setOpen(false);
         onCreated();
       } else {
@@ -2651,6 +2669,55 @@ function CreateProposalForm({
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Proposal opens immediately. Set when voting should close.
+                </p>
+              </div>
+              <div>
+                <label
+                  htmlFor="proposal-vote-amount"
+                  className="text-xs text-gray-400 font-medium mb-1 block"
+                >
+                  Vote Amount *{" "}
+                  <span className="text-yellow-500">
+                    (tokens being voted on)
+                  </span>
+                </label>
+                <Input
+                  id="proposal-vote-amount"
+                  data-ocid="proposal.input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={voteAmount}
+                  onChange={(e) => setVoteAmount(e.target.value)}
+                  placeholder="e.g. 1000"
+                  className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Total tokens to be voted on. Rewards (losing %) come from this
+                  amount.
+                </p>
+              </div>
+              <div>
+                <label
+                  htmlFor="proposal-dest-addr"
+                  className="text-xs text-gray-400 font-medium mb-1 block"
+                >
+                  Destination Address *{" "}
+                  <span className="text-yellow-500">
+                    (winning tokens sent here)
+                  </span>
+                </label>
+                <Input
+                  id="proposal-dest-addr"
+                  data-ocid="proposal.input"
+                  value={destinationAddress}
+                  onChange={(e) => setDestinationAddress(e.target.value)}
+                  placeholder="Principal ID (e.g. abc12-xyz...)"
+                  className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  After rewards are distributed to voters, the remaining tokens
+                  (winning %) go here.
                 </p>
               </div>
               <Button

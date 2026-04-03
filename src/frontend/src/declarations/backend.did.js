@@ -92,6 +92,12 @@ export const CustomProposal = IDL.Record({
   'totalVoteAmount': IDL.Text,
 });
 
+export const CustomProposalMeta = IDL.Record({
+  'proposalId': IDL.Nat,
+  'voteAmount': IDL.Text,
+  'destinationAddress': IDL.Text,
+});
+
 export const CustomOptionAlloc = IDL.Record({
   'optionIndex': IDL.Nat,
   'pct': IDL.Nat,
@@ -197,7 +203,8 @@ export const idlService = IDL.Service({
   'setNeuronTopupAddress': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
   'setGamesWallet': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
   'getAdminConfig': IDL.Func([], [IDL.Record({ 'neuronTopupAddress': IDL.Text, 'gamesWallet': IDL.Text })], ['query']),
-  'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int], [IDL.Opt(CustomProposal)], []),
+  'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int, IDL.Text, IDL.Text], [IDL.Opt(CustomProposal)], []),
+  'getCustomProposalMeta': IDL.Func([IDL.Nat], [IDL.Opt(CustomProposalMeta)], ['query']),
   'getCustomProposals': IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
   'castCustomVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat], [IDL.Bool], []),
   'hasVotedOnCustomProposal': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
@@ -296,6 +303,11 @@ export const idlFactory = ({ IDL }) => {
     'closeTime': IDL.Int,
     'isFinalized': IDL.Bool,
     'totalVoteAmount': IDL.Text,
+  });
+  const CustomProposalMeta = IDL.Record({
+    'proposalId': IDL.Nat,
+    'voteAmount': IDL.Text,
+    'destinationAddress': IDL.Text,
   });
   const CustomOptionAlloc = IDL.Record({
     'optionIndex': IDL.Nat,
@@ -402,7 +414,8 @@ export const idlFactory = ({ IDL }) => {
     'setNeuronTopupAddress': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
     'setGamesWallet': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
     'getAdminConfig': IDL.Func([], [IDL.Record({ 'neuronTopupAddress': IDL.Text, 'gamesWallet': IDL.Text })], ['query']),
-    'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int], [IDL.Opt(CustomProposal)], []),
+    'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int, IDL.Text, IDL.Text], [IDL.Opt(CustomProposal)], []),
+    'getCustomProposalMeta': IDL.Func([IDL.Nat], [IDL.Opt(CustomProposalMeta)], ['query']),
     'getCustomProposals': IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
     'castCustomVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat], [IDL.Bool], []),
     'hasVotedOnCustomProposal': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
