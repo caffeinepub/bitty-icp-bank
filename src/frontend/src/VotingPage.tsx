@@ -3058,12 +3058,7 @@ export default function VotingPage({
     if (actor) loadVotes();
   }, [actor, loadVotes]);
 
-  // Auto-open wallet panel on II sign-in
-  useEffect(() => {
-    if (iiPrincipal) {
-      setWalletOpen(true);
-    }
-  }, [iiPrincipal]);
+  // Wallet opens only when user clicks the mascot (no auto-open)
 
   // Load balance when principal changes
   useEffect(() => {
@@ -3092,7 +3087,6 @@ export default function VotingPage({
       if (connected) {
         const p = await window.ic.plug.agent?.getPrincipal();
         setPlugPrincipal(p?.toString() ?? null);
-        setWalletOpen(true);
         // Create backend actor authenticated with Plug agent
         try {
           const cfg = await loadConfig();

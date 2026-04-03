@@ -56,7 +56,7 @@ import CommunityHistoryPage from "./CommunityHistoryPage";
 import ScheduledHistoryPage from "./ScheduledHistoryPage";
 import VotingPage from "./VotingPage";
 
-const HIDE_BALANCES = false;
+const HIDE_BALANCES = true;
 
 const NEURON_ID = "2927437143767212939";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
