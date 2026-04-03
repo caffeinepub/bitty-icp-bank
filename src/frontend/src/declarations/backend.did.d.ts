@@ -131,7 +131,7 @@ export interface _SERVICE {
   setNeuronTopupAddress: ActorMethod<[string, string], boolean>;
   setGamesWallet: ActorMethod<[string, string], boolean>;
   getAdminConfig: ActorMethod<[], { neuronTopupAddress: string; gamesWallet: string }>;
-  createCustomProposal: ActorMethod<[string, string, string, VoteType, string[], bigint], [] | [CustomProposal]>;
+  createCustomProposal: ActorMethod<[string, string, string, VoteType, string[], bigint, string, string], [] | [CustomProposal]>;
   getCustomProposals: ActorMethod<[], CustomProposal[]>;
   castCustomVote: ActorMethod<[bigint, string, CustomOptionAlloc[], bigint], boolean>;
   hasVotedOnCustomProposal: ActorMethod<[bigint, string], boolean>;
