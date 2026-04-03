@@ -1190,7 +1190,9 @@ function VoteCard({
     try {
       const ok = await actor.finalizeVote(adminPassword, vote.id);
       if (ok) {
-        toast.success("Vote finalized! Rewards pool created.");
+        toast.success(
+          "Vote finalized! Auto-distribution will execute if canister is funded.",
+        );
         await loadData();
       } else {
         toast.error("Failed to finalize.");
@@ -2182,7 +2184,9 @@ function CustomProposalCard({
         proposal.id,
       );
       if (ok) {
-        toast.success("Proposal finalized!");
+        toast.success(
+          "Proposal finalized! Auto-distribution will execute if canister is funded.",
+        );
         onRefresh();
       } else toast.error("Failed to finalize.");
     } catch (e: any) {
@@ -2979,14 +2983,15 @@ function PendingDistributionRow({
           {item.title}
         </p>
         <p className="text-xs text-gray-400 mt-0.5">
-          {tokenLabel} · Needs:{" "}
+          ⚠️ Send{" "}
           <span className="text-amber-300 font-mono">
             {amountHuman.toLocaleString(undefined, {
               minimumFractionDigits: 4,
               maximumFractionDigits: 4,
             })}{" "}
-            {isICP ? "ICP" : "BITTYICP"}
-          </span>
+            {tokenLabel.replace("$", "")}
+          </span>{" "}
+          to the canister, then click DISTRIBUTE NOW
         </p>
       </div>
       <Button

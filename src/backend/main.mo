@@ -769,6 +769,43 @@ actor {
     } catch (_) {};
   };
 
+  // After distribution for custom proposals, send remainder to specified address
+  func sendRemainderToAddress(destination : Text, voteType : VoteType) : async () {
+    let ledgerId = switch (voteType) {
+      case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+      case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+    };
+    let ledger = actor(ledgerId) : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+      icrc1_transfer : ({
+        from_subaccount : ?Blob;
+        to : { owner : Principal; subaccount : ?Blob };
+        amount : Nat;
+        fee : ?Nat;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+      }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
+    };
+    let fee : Nat = 10000;
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+    try {
+      let balance = await ledger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null });
+      if (balance > fee * 2) {
+        let sendAmount = balance - fee;
+        let destPrincipal = Principal.fromText(destination);
+        ignore await ledger.icrc1_transfer({
+          from_subaccount = null;
+          to = { owner = destPrincipal; subaccount = null };
+          amount = if (sendAmount > fee) sendAmount - fee else 0;
+          fee = ?fee;
+          memo = null;
+          created_at_time = null;
+        });
+      };
+    } catch (_) {};
+  };
+
+
   //------------------------------ Finalize Vote (with auto-distribution) ------------------------------
 
   public shared func finalizeVote(password : Text, voteId : Nat) : async Bool {
@@ -1214,7 +1251,11 @@ actor {
           let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
           if (bal >= rewardsTotal) {
             ignore await distributeCustomRewardsInternal(proposalId, entry);
-            ignore sendRemainderToTreasury(p.voteType);
+            let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
+            switch (metaOpt) {
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType) };
+            };
           } else {
             removePendingDistribution(true, proposalId);
             let pending : PendingDistribution = {
@@ -1370,7 +1411,11 @@ actor {
       case (?pool) {
         let result = await distributeCustomRewardsInternal(proposalId, pool);
         if (result.success) {
-          ignore sendRemainderToTreasury(pool.voteType);
+          let metaOpt2 = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
+          switch (metaOpt2) {
+            case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pool.voteType) };
+            case (null) { ignore sendRemainderToTreasury(pool.voteType) };
+          };
         };
         result;
       };
