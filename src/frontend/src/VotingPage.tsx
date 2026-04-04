@@ -56,13 +56,7 @@ import type {
 } from "./backend.d";
 import { loadConfig } from "./config";
 import { idlFactory as backendIdlFactory } from "./declarations/backend.did";
-// ─── E8s conversion helpers ───────────────────────────────────────────────────
 const E8S = 100_000_000;
-function toE8sString(humanAmount: string): string {
-  const n = Number.parseFloat(humanAmount);
-  if (Number.isNaN(n) || n <= 0) return "0";
-  return Math.round(n * E8S).toString();
-}
 function fromE8s(raw: string | bigint): number {
   const n =
     typeof raw === "bigint" ? Number(raw) : Number.parseFloat(raw as string);
@@ -1097,8 +1091,6 @@ function VoteCard({
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingResults, setLoadingResults] = useState(true);
-  const [voteAmountInput, setVoteAmountInput] = useState("");
-  const [savingAmount, setSavingAmount] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -1163,24 +1155,6 @@ function VoteCard({
       toast.error(`Error: ${e?.message ?? "Unknown error"}`);
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function saveVoteAmount() {
-    if (!actor || !voteAmountInput.trim()) return;
-    setSavingAmount(true);
-    try {
-      const ok = await actor.setVoteAmount(
-        adminPassword,
-        vote.id,
-        toE8sString(voteAmountInput.trim()),
-      );
-      if (ok) toast.success("Vote amount saved!");
-      else toast.error("Failed to save amount.");
-    } catch (e: any) {
-      toast.error(`Error: ${e?.message}`);
-    } finally {
-      setSavingAmount(false);
     }
   }
 
@@ -1372,28 +1346,6 @@ function VoteCard({
               <span className="text-xs font-bold bg-red-500/20 border border-red-500/50 text-red-400 px-2 py-0.5 rounded-full">
                 ADMIN ONLY
               </span>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                data-ocid="vote.input"
-                value={voteAmountInput}
-                onChange={(e) => setVoteAmountInput(e.target.value)}
-                placeholder={`Set ${isICP ? "ICP" : "BITTYICP"} amount being voted on`}
-                className="bg-black/40 border-yellow-600/30 text-gray-200 text-sm"
-              />
-              <Button
-                data-ocid="vote.save_button"
-                size="sm"
-                onClick={saveVoteAmount}
-                disabled={savingAmount}
-                className="bg-yellow-600 hover:bg-yellow-500 text-black whitespace-nowrap"
-              >
-                {savingAmount ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  "Set Amount"
-                )}
-              </Button>
             </div>
             {!vote.isFinalized && (
               <div className="space-y-1">
@@ -2086,12 +2038,6 @@ function CustomProposalCard({
   const [results, setResults] = useState<CustomVoteResult[]>([]);
   const [hasVoted, setHasVoted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [tokenAmountInput, setTokenAmountInput] = useState(
-    proposal.totalVoteAmount && proposal.totalVoteAmount !== "0"
-      ? formatE8sAmount(proposal.totalVoteAmount)
-      : "",
-  );
-  const [savingAmount, setSavingAmount] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [marking, setMarking] = useState(false);
 
@@ -2152,26 +2098,6 @@ function CustomProposalCard({
       toast.error(`Error: ${e?.message}`);
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function saveTokenAmount() {
-    if (!actor) return;
-    setSavingAmount(true);
-    try {
-      const ok = await (actor as any).setCustomProposalAmount(
-        adminPassword,
-        proposal.id,
-        toE8sString(tokenAmountInput),
-      );
-      if (ok) {
-        toast.success("Token amount saved!");
-        onRefresh();
-      } else toast.error("Failed to save amount.");
-    } catch (e: any) {
-      toast.error(`Error: ${e?.message}`);
-    } finally {
-      setSavingAmount(false);
     }
   }
 
@@ -2363,28 +2289,6 @@ function CustomProposalCard({
               <span className="text-xs font-bold bg-red-500/20 border border-red-500/50 text-red-400 px-2 py-0.5 rounded-full">
                 ADMIN ONLY
               </span>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                data-ocid="proposal.input"
-                value={tokenAmountInput}
-                onChange={(e) => setTokenAmountInput(e.target.value)}
-                placeholder="Token amount for this proposal"
-                className="bg-black/40 border-yellow-600/30 text-gray-200 text-xs h-9"
-              />
-              <Button
-                data-ocid="proposal.save_button"
-                size="sm"
-                onClick={saveTokenAmount}
-                disabled={savingAmount}
-                className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-xs"
-              >
-                {savingAmount ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  "Set"
-                )}
-              </Button>
             </div>
             {(isOpen || isExpired) && (
               <div className="space-y-1">
@@ -3140,11 +3044,17 @@ export default function VotingPage({
     if (!a) return;
     setLoadingVotes(true);
     try {
-      // Auto-finalize any expired votes/proposals (no admin password needed)
-      // This ensures distribution fires automatically when funds are available
+      // Auto-finalize any expired votes/proposals and retry pending distributions
+      // Both fire automatically for any visitor — no admin login needed
       if (a.autoFinalizeExpired) {
         try {
           await a.autoFinalizeExpired();
+        } catch (_) {}
+      }
+      // Retry any distributions that were pending (canister previously underfunded)
+      if (a.retryPendingDistributions) {
+        try {
+          await a.retryPendingDistributions();
         } catch (_) {}
       }
 

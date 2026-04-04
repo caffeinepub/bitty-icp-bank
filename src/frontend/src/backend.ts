@@ -166,6 +166,7 @@ export interface backendInterface {
     markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
     distributeRewards(password: string, voteId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }>;
     distributeCustomRewards(password: string, proposalId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }>;
+    retryPendingDistributions(): Promise<void>;
     getRewardsPools(): Promise<any[]>;
     setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
     setGamesWallet(password: string, addr: string): Promise<boolean>;
@@ -575,6 +576,9 @@ export class Backend implements backendInterface {
     async distributeCustomRewards(password: string, proposalId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }> {
         const result = await this.actor.distributeCustomRewards(password, proposalId);
         return result;
+    }
+    async retryPendingDistributions(): Promise<void> {
+        await this.actor.retryPendingDistributions();
     }
     async getRewardsPools(): Promise<any[]> {
         const result = await this.actor.getRewardsPools();

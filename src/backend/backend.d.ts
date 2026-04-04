@@ -187,6 +187,7 @@ export interface _SERVICE {
   setCustomProposalAmount: (password: string, proposalId: bigint, amount: string) => Promise<boolean>;
   finalizeCustomProposal: (password: string, proposalId: bigint) => Promise<boolean>;
   autoFinalizeExpired: () => Promise<void>;
+  retryPendingDistributions: () => Promise<void>;
   getCustomRewardsPools: () => Promise<CustomRewardsPoolEntry[]>;
   markCustomRewardsDistributed: (password: string, proposalId: bigint) => Promise<boolean>;
   distributeCustomRewards: (password: string, proposalId: bigint) => Promise<DistributeResult>;

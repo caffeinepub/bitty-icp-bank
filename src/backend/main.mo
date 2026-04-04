@@ -1770,6 +1770,57 @@ actor {
   };
 
 
+  // Retry any pending distributions that now have sufficient canister balance
+  public shared func retryPendingDistributions() : async () {
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+    let pending = pendingDistributions;
+    for (pd in pending.vals()) {
+      let ledgerId = switch (pd.voteType) {
+        case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+        case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+      };
+      let checkLedger = actor(ledgerId) : actor {
+        icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+      };
+      let needed = parseNatText(pd.amountNeeded);
+      if (needed > 0) {
+        let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+        if (bal >= needed) {
+          if (pd.isCustom) {
+            // Retry custom proposal distribution
+            let poolOpt = customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool {
+              r.proposalId == pd.proposalId and not r.distributed
+            }).values().next();
+            switch (poolOpt) {
+              case (?pool) {
+                ignore await distributeCustomRewardsInternal(pd.proposalId, pool);
+                let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == pd.proposalId }).values().next();
+                switch (metaOpt) {
+                  case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pd.voteType) };
+                  case (null) { ignore sendRemainderToTreasury(pd.voteType) };
+                };
+              };
+              case (null) { removePendingDistribution(true, pd.proposalId) };
+            };
+          } else {
+            // Retry scheduled vote distribution
+            let poolOpt = rewardsPools.filter(func(r : RewardsPoolEntry) : Bool {
+              r.voteId == pd.voteId and not r.distributed
+            }).values().next();
+            switch (poolOpt) {
+              case (?pool) {
+                ignore await distributeRewardsInternal(pd.voteId, pool);
+                ignore sendRemainderToTreasury(pd.voteType);
+              };
+              case (null) { removePendingDistribution(false, pd.voteId) };
+            };
+          };
+        };
+      };
+    };
+  };
+
+
     system func postupgrade() {
     seedCurrentMonthlyVotes();
   };
