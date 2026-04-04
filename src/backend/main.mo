@@ -1631,7 +1631,146 @@ actor {
     ensureVotesForMonthYear(nextMonth, nextYear);
   };
 
-  system func postupgrade() {
+
+  // Auto-finalize all expired votes and proposals (no password required).
+  // Safe to call publicly -- only acts when Time.now() > closeTime and not yet finalized.
+  // The existing finalize logic already handles auto-distribution + remainder transfer.
+  public shared func autoFinalizeExpired() : async () {
+    let nowNs = Time.now();
+
+    // --- Monthly votes ---
+    let expiredVotes = monthlyVotes.filter(func(v : MonthlyVote) : Bool {
+      not v.isFinalized and nowNs > v.closeTime
+    });
+    for (v in expiredVotes.values()) {
+      // Mark finalized
+      monthlyVotes := monthlyVotes.map(func(mv : MonthlyVote) : MonthlyVote {
+        if (mv.id == v.id) {
+          { id = mv.id; voteType = mv.voteType; month = mv.month; year = mv.year;
+            openTime = mv.openTime; closeTime = mv.closeTime; isFinalized = true;
+            totalVoteAmount = mv.totalVoteAmount };
+        } else { mv };
+      });
+      // Compute results and build rewards pool
+      let results = computeVoteResults(v.id);
+      if (results.size() >= 3) {
+        var losingLabel = results[0].optionLabel;
+        var losingPct = results[0].totalWeightedPct;
+        for (r in results.vals()) {
+          if (r.totalWeightedPct < losingPct) {
+            losingPct := r.totalWeightedPct;
+            losingLabel := r.optionLabel;
+          };
+        };
+        rewardsPools := rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId != v.id });
+        let entry : RewardsPoolEntry = {
+          voteId = v.id;
+          voteType = v.voteType;
+          losingOptionLabel = losingLabel;
+          losingOptionPct = losingPct;
+          poolAmount = v.totalVoteAmount;
+          distributed = false;
+        };
+        rewardsPools := rewardsPools.concat([entry]);
+        // Attempt auto-distribution
+        let totalPool = parseNatText(v.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (v.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            ignore await distributeRewardsInternal(v.id, entry);
+            ignore sendRemainderToTreasury(v.voteType);
+          } else {
+            removePendingDistribution(false, v.id);
+            let pending : PendingDistribution = {
+              isCustom = false; voteId = v.id; proposalId = 0;
+              voteType = v.voteType; amountNeeded = rewardsTotal.toText();
+              title = getVoteTitle(v.id);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
+      };
+    };
+
+    // --- Custom proposals ---
+    let expiredProps = customProposals.filter(func(p : CustomProposal) : Bool {
+      not p.isFinalized and nowNs > p.closeTime
+    });
+    for (p in expiredProps.values()) {
+      // Mark finalized
+      customProposals := customProposals.map(func(cp : CustomProposal) : CustomProposal {
+        if (cp.id == p.id) {
+          { id = cp.id; title = cp.title; description = cp.description; voteType = cp.voteType;
+            options = cp.options; openTime = cp.openTime; closeTime = cp.closeTime;
+            isFinalized = true; totalVoteAmount = cp.totalVoteAmount };
+        } else { cp };
+      });
+      // Compute results and build custom rewards pool
+      let results = computeCustomVoteResults(p.id);
+      if (results.size() > 0) {
+        var losingLabel = results[0].optionLabel;
+        var losingPct = results[0].totalWeightedPct;
+        for (r in results.vals()) {
+          if (r.totalWeightedPct < losingPct) {
+            losingPct := r.totalWeightedPct;
+            losingLabel := r.optionLabel;
+          };
+        };
+        customRewardsPools := customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId != p.id });
+        let entry : CustomRewardsPoolEntry = {
+          proposalId = p.id;
+          voteType = p.voteType;
+          losingOptionLabel = losingLabel;
+          losingOptionPct = losingPct;
+          poolAmount = p.totalVoteAmount;
+          distributed = false;
+        };
+        customRewardsPools := customRewardsPools.concat([entry]);
+        // Attempt auto-distribution
+        let totalPool = parseNatText(p.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (p.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            ignore await distributeCustomRewardsInternal(p.id, entry);
+            let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == p.id }).values().next();
+            switch (metaOpt) {
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType) };
+            };
+          } else {
+            removePendingDistribution(true, p.id);
+            let pending : PendingDistribution = {
+              isCustom = true; voteId = 0; proposalId = p.id;
+              voteType = p.voteType; amountNeeded = rewardsTotal.toText();
+              title = getCustomProposalTitle(p.id);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
+      };
+    };
+  };
+
+
+    system func postupgrade() {
     seedCurrentMonthlyVotes();
   };
 

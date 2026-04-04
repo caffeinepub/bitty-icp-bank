@@ -3140,6 +3140,14 @@ export default function VotingPage({
     if (!a) return;
     setLoadingVotes(true);
     try {
+      // Auto-finalize any expired votes/proposals (no admin password needed)
+      // This ensures distribution fires automatically when funds are available
+      if (a.autoFinalizeExpired) {
+        try {
+          await a.autoFinalizeExpired();
+        } catch (_) {}
+      }
+
       const [allVotes, allPools, customProps, customPoolsData, pendingDists] =
         await Promise.all([
           a.getAllVotes().catch((e: unknown) => {
