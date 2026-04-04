@@ -7,14 +7,14 @@ import Runtime "mo:core/Runtime";
 import Map "mo:core/Map";
 import Char "mo:core/Char";
 import Nat "mo:core/Nat";
-import Migration "migration";
+
 import Outcall "http-outcalls/outcall";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
 // Use migration during upgrade
-(with migration = Migration.run)
+
 actor {
   //------------------------------ Access Control ------------------------------
 
