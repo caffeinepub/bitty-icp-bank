@@ -150,10 +150,12 @@ export function InternetIdentityProvider({
    */
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // Use a ref for authClient so updating it does NOT trigger re-renders or
-  // re-run the initialization effect (which was causing the ~20-30s blank screen loop).
+  // Store authClient in a ref so it NEVER triggers useEffect re-runs.
+  // Previously it was in useState which caused the init effect to loop:
+  // create client → setAuthClient → effect re-runs → setStatus("initializing") → blank screen.
   const authClientRef = useRef<AuthClient | undefined>(undefined);
-  const createOptionsRef = useRef(createOptions);
+  const initializingRef = useRef(false);
+
   const [identity, setIdentity] = useState<Identity | undefined>(undefined);
   const [loginStatus, setStatus] = useState<Status>("initializing");
   const [loginError, setError] = useState<Error | undefined>(undefined);
@@ -195,7 +197,9 @@ export function InternetIdentityProvider({
       currentIdentity instanceof DelegationIdentity &&
       isDelegationValid(currentIdentity.getDelegation())
     ) {
-      setErrorMessage("User is already authenticated");
+      // Already authenticated — just surface the identity
+      setIdentity(currentIdentity);
+      setStatus("success");
       return;
     }
 
@@ -220,7 +224,6 @@ export function InternetIdentityProvider({
     void authClient
       .logout()
       .then(() => {
-        authClientRef.current = undefined;
         setIdentity(undefined);
         setStatus("idle");
         setError(undefined);
@@ -235,43 +238,38 @@ export function InternetIdentityProvider({
       });
   }, [setErrorMessage]);
 
-  // This effect runs only once on mount (empty deps after createOptions stabilization).
-  // authClientRef is NOT in the dep array -- storing the client in a ref means
-  // "setAuthClient" no longer causes a re-render that would re-trigger this effect.
+  // This effect runs ONCE on mount (createOptions is stable in practice).
+  // authClientRef is intentionally NOT in the dependency array — putting a ref
+  // there would cause the loop that was blanking the screen.
   useEffect(() => {
-    let cancelled = false;
+    if (initializingRef.current) return;
+    initializingRef.current = true;
+
     void (async () => {
       try {
         setStatus("initializing");
-        if (!authClientRef.current) {
-          const newClient = await createAuthClient(createOptionsRef.current);
-          if (cancelled) return;
-          authClientRef.current = newClient;
-        }
-        const isAuthenticated = await authClientRef.current.isAuthenticated();
-        if (cancelled) return;
+        const client = await createAuthClient(createOptions);
+        authClientRef.current = client;
+
+        const isAuthenticated = await client.isAuthenticated();
         if (isAuthenticated) {
-          const loadedIdentity = authClientRef.current.getIdentity();
+          const loadedIdentity = client.getIdentity();
           setIdentity(loadedIdentity);
           setStatus("success");
-        } else {
-          setStatus("idle");
+          return;
         }
       } catch (unknownError) {
-        if (!cancelled) {
-          setStatus("loginError");
-          setError(
-            unknownError instanceof Error
-              ? unknownError
-              : new Error("Initialization failed"),
-          );
-        }
+        setStatus("loginError");
+        setError(
+          unknownError instanceof Error
+            ? unknownError
+            : new Error("Initialization failed"),
+        );
+        return;
       }
+      setStatus("idle");
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []); // intentionally empty -- runs once on mount only
+  }, [createOptions]);
 
   const value = useMemo<ProviderValue>(
     () => ({
