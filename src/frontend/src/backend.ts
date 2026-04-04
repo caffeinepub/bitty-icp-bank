@@ -89,12 +89,88 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface ChatMessage {
-    id: bigint;
-    author: string;
-    message: string;
-    timestamp: bigint;
+export interface CustomVoteAllocation {
+    votingPower: bigint;
+    allocations: Array<CustomOptionAlloc>;
     proposalId: bigint;
+    voterPrincipal: string;
+}
+export interface CustomVoteResult {
+    optionLabel: string;
+    totalWeightedPct: bigint;
+    optionIndex: bigint;
+    voterCount: bigint;
+}
+export interface CustomOptionAlloc {
+    pct: bigint;
+    optionIndex: bigint;
+}
+export interface TransformationOutput {
+    status: bigint;
+    body: Uint8Array;
+    headers: Array<http_header>;
+}
+export interface CustomRewardsPoolEntry {
+    distributed: boolean;
+    voteType: VoteType;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    proposalId: bigint;
+    poolAmount: string;
+}
+export interface VoteResult {
+    optionLabel: string;
+    totalWeightedPct: bigint;
+    voterCount: bigint;
+}
+export interface RewardsPoolEntry {
+    distributed: boolean;
+    voteType: VoteType;
+    voteId: bigint;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    poolAmount: string;
+}
+export interface MonthlyVote {
+    id: bigint;
+    month: bigint;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
+    year: bigint;
+    isFinalized: boolean;
+    openTime: bigint;
+}
+export interface http_header {
+    value: string;
+    name: string;
+}
+export interface http_request_result {
+    status: bigint;
+    body: Uint8Array;
+    headers: Array<http_header>;
+}
+export interface VoteAllocation {
+    votingPower: bigint;
+    pctA: bigint;
+    pctB: bigint;
+    pctC: bigint;
+    voteId: bigint;
+    voterPrincipal: string;
+}
+export interface RewardTransaction {
+    id: bigint;
+    recipient: string;
+    voteId: bigint;
+    timestamp: bigint;
+    tokenType: VoteType;
+    amount: bigint;
+    voteTitle: string;
+    proposalId: bigint;
+}
+export interface TransformationInput {
+    context: Uint8Array;
+    response: http_request_result;
 }
 export interface Announcement {
     id: bigint;
@@ -102,20 +178,36 @@ export interface Announcement {
     body: string;
     timestamp: bigint;
 }
-export interface Vote {
-    weight: bigint;
-    optionIndex: bigint;
-    proposalId: bigint;
-    voterPrincipal: string;
-}
-export interface Proposal {
+export interface ChatMessage {
     id: bigint;
-    startTime: bigint;
+    voteId: bigint;
+    author: string;
+    message: string;
+    timestamp: bigint;
+}
+export interface CustomProposalMeta {
+    destinationAddress: string;
+    voteAmount: string;
+    proposalId: bigint;
+}
+export interface CustomProposal {
+    id: bigint;
     title: string;
-    endTime: bigint;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
     description: string;
-    isOpen: boolean;
+    isFinalized: boolean;
     options: Array<string>;
+    openTime: bigint;
+}
+export interface PendingDistribution {
+    title: string;
+    voteType: VoteType;
+    voteId: bigint;
+    amountNeeded: string;
+    isCustom: boolean;
+    proposalId: bigint;
 }
 export interface UserProfile {
     name: string;
@@ -125,71 +217,116 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
+export enum VoteType {
+    ICP = "ICP",
+    BITTYICP = "BITTYICP"
+}
 export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     addAnnouncement(password: string, title: string, body: string): Promise<Announcement | null>;
-    addChatMessage(proposalId: bigint, author: string, message: string): Promise<ChatMessage | null>;
+    addChatMessage(voteId: bigint, author: string, message: string): Promise<ChatMessage | null>;
     adminLogin(password: string): Promise<boolean>;
+    adminResetVerifiedWallets(password: string): Promise<boolean>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    castVote(proposalId: bigint, voterPrincipal: string, optionIndex: bigint, weight: bigint): Promise<boolean>;
-    closeProposal(password: string, proposalId: bigint): Promise<boolean>;
-    createProposal(password: string, title: string, description: string, options: Array<string>): Promise<Proposal | null>;
+    autoFinalizeExpired(): Promise<void>;
+    castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: Array<CustomOptionAlloc>, votingPower: bigint): Promise<boolean>;
+    castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean>;
+    confirmWalletVerification(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    createCustomProposal(password: string, title: string, description: string, voteType: VoteType, options: Array<string>, closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<CustomProposal | null>;
     deleteAnnouncement(password: string, id: bigint): Promise<boolean>;
+    distributeCustomRewards(password: string, proposalId: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }>;
+    distributeRewards(password: string, voteId: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }>;
+    finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean>;
+    finalizeVote(password: string, voteId: bigint): Promise<boolean>;
+    getActiveVotes(): Promise<Array<MonthlyVote>>;
+    getAdminConfig(): Promise<{
+        gamesWallet: string;
+        neuronTopupAddress: string;
+    }>;
+    getAllRewardTransactions(password: string): Promise<Array<RewardTransaction>>;
+    getAllVotes(): Promise<Array<MonthlyVote>>;
     getAnnouncements(): Promise<Array<Announcement>>;
+    getBittyUsdPrice(): Promise<string>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getChatMessages(proposalId: bigint): Promise<Array<ChatMessage>>;
+    getCanisterBalance(): Promise<{
+        icpE8s: bigint;
+        bittyE8s: bigint;
+    }>;
+    getChatMessages(voteId: bigint): Promise<Array<ChatMessage>>;
+    getCustomProposalMeta(proposalId: bigint): Promise<CustomProposalMeta | null>;
+    getCustomProposals(): Promise<Array<CustomProposal>>;
+    getCustomRewardsPools(): Promise<Array<CustomRewardsPoolEntry>>;
+    getCustomVoteAllocations(proposalId: bigint): Promise<Array<CustomVoteAllocation>>;
+    getCustomVoteResults(proposalId: bigint): Promise<Array<CustomVoteResult>>;
+    getIcpUsdPrice(): Promise<string>;
     getManualBalances(): Promise<{
         icp: string;
         fund: string;
         bittyPriceUsd: string;
         bitty: string;
     }>;
-    getProposals(): Promise<Array<Proposal>>;
+    getMyRewardTransactions(principal: string): Promise<Array<RewardTransaction>>;
+    getMyVerifiedWallets(): Promise<Array<string>>;
+    getPendingDistributions(): Promise<Array<PendingDistribution>>;
+    getRewardsPools(): Promise<Array<RewardsPoolEntry>>;
+    getTotalRewardsDistributed(): Promise<{
+        totalICP: bigint;
+        totalBITTY: bigint;
+    }>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
-    getVotesForProposal(proposalId: bigint): Promise<Array<Vote>>;
-    hasVoted(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    getVoteAllocations(voteId: bigint): Promise<Array<VoteAllocation>>;
+    getVoteResults(voteId: bigint): Promise<Array<VoteResult>>;
+    getWalletOwner(wallet: string): Promise<string | null>;
+    hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean>;
+    initWalletVerification(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: bigint;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
     isCallerAdmin(): Promise<boolean>;
+    isExternalWalletClaimed(wallet: string): Promise<boolean>;
+    markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
+    markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
+    retryPendingDistributions(): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean>;
+    setGamesWallet(password: string, addr: string): Promise<boolean>;
     setManualBalances(password: string, icp: string, bitty: string): Promise<boolean>;
     setManualBittyPrice(password: string, price: string): Promise<boolean>;
     setManualFundBalance(password: string, fund: string): Promise<boolean>;
-    updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
-    getActiveVotes(): Promise<any[]>;
-    getAllVotes(): Promise<any[]>;
-    castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean>;
-    hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean>;
-    getVoteAllocations(voteId: bigint): Promise<any[]>;
-    getVoteResults(voteId: bigint): Promise<any[]>;
-    setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
-    finalizeVote(password: string, voteId: bigint): Promise<boolean>;
-    markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
-    distributeRewards(password: string, voteId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }>;
-    distributeCustomRewards(password: string, proposalId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }>;
-    retryPendingDistributions(): Promise<void>;
-    getRewardsPools(): Promise<any[]>;
     setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
-    setGamesWallet(password: string, addr: string): Promise<boolean>;
-    getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }>;
-    createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<any | null>;
-    getCustomProposals(): Promise<any[]>;
-    castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: any[], votingPower: bigint): Promise<boolean>;
-    hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
-    getCustomVoteAllocations(proposalId: bigint): Promise<any[]>;
-    getCustomVoteResults(proposalId: bigint): Promise<any[]>;
-    setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean>;
-    finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean>;
-    getCustomRewardsPools(): Promise<any[]>;
-    markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
-    initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }>;
-    confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }>;
-    getMyVerifiedWallets(): Promise<string[]>;
-    isExternalWalletClaimed(wallet: string): Promise<boolean>;
-    getWalletOwner(wallet: string): Promise<string | null>;
-    getIcpUsdPrice(): Promise<string>;
-    getBittyUsdPrice(): Promise<string>;
+    setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    setVoteAmountFromTreasury(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    transformHttpResponse(input: TransformationInput): Promise<TransformationOutput>;
+    unverifyWallet(externalWallet: string): Promise<boolean>;
+    updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
+    verifyExternalWallet(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
 }
-import type { Announcement as _Announcement, ChatMessage as _ChatMessage, Proposal as _Proposal, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { Announcement as _Announcement, ChatMessage as _ChatMessage, CustomProposal as _CustomProposal, CustomProposalMeta as _CustomProposalMeta, CustomRewardsPoolEntry as _CustomRewardsPoolEntry, MonthlyVote as _MonthlyVote, PendingDistribution as _PendingDistribution, RewardTransaction as _RewardTransaction, RewardsPoolEntry as _RewardsPoolEntry, UserProfile as _UserProfile, UserRole as _UserRole, VoteType as _VoteType } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -248,6 +385,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async adminResetVerifiedWallets(arg0: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.adminResetVerifiedWallets(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.adminResetVerifiedWallets(arg0);
+            return result;
+        }
+    }
     async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
         if (this.processError) {
             try {
@@ -262,46 +413,80 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async castVote(arg0: bigint, arg1: string, arg2: bigint, arg3: bigint): Promise<boolean> {
+    async autoFinalizeExpired(): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.castVote(arg0, arg1, arg2, arg3);
+                const result = await this.actor.autoFinalizeExpired();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.castVote(arg0, arg1, arg2, arg3);
+            const result = await this.actor.autoFinalizeExpired();
             return result;
         }
     }
-    async closeProposal(arg0: string, arg1: bigint): Promise<boolean> {
+    async castCustomVote(arg0: bigint, arg1: string, arg2: Array<CustomOptionAlloc>, arg3: bigint): Promise<boolean> {
         if (this.processError) {
             try {
-                const result = await this.actor.closeProposal(arg0, arg1);
+                const result = await this.actor.castCustomVote(arg0, arg1, arg2, arg3);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.closeProposal(arg0, arg1);
+            const result = await this.actor.castCustomVote(arg0, arg1, arg2, arg3);
             return result;
         }
     }
-    async createProposal(arg0: string, arg1: string, arg2: string, arg3: Array<string>): Promise<Proposal | null> {
+    async castSplitVote(arg0: bigint, arg1: string, arg2: bigint, arg3: bigint, arg4: bigint, arg5: bigint): Promise<boolean> {
         if (this.processError) {
             try {
-                const result = await this.actor.createProposal(arg0, arg1, arg2, arg3);
-                return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
+                const result = await this.actor.castSplitVote(arg0, arg1, arg2, arg3, arg4, arg5);
+                return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.createProposal(arg0, arg1, arg2, arg3);
-            return from_candid_opt_n5(this._uploadFile, this._downloadFile, result);
+            const result = await this.actor.castSplitVote(arg0, arg1, arg2, arg3, arg4, arg5);
+            return result;
+        }
+    }
+    async confirmWalletVerification(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.confirmWalletVerification(arg0);
+                return from_candid_variant_n5(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.confirmWalletVerification(arg0);
+            return from_candid_variant_n5(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async createCustomProposal(arg0: string, arg1: string, arg2: string, arg3: VoteType, arg4: Array<string>, arg5: bigint, arg6: string, arg7: string): Promise<CustomProposal | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.createCustomProposal(arg0, arg1, arg2, to_candid_VoteType_n6(this._uploadFile, this._downloadFile, arg3), arg4, arg5, arg6, arg7);
+                return from_candid_opt_n8(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.createCustomProposal(arg0, arg1, arg2, to_candid_VoteType_n6(this._uploadFile, this._downloadFile, arg3), arg4, arg5, arg6, arg7);
+            return from_candid_opt_n8(this._uploadFile, this._downloadFile, result);
         }
     }
     async deleteAnnouncement(arg0: string, arg1: bigint): Promise<boolean> {
@@ -318,6 +503,129 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async distributeCustomRewards(arg0: string, arg1: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.distributeCustomRewards(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.distributeCustomRewards(arg0, arg1);
+            return result;
+        }
+    }
+    async distributeRewards(arg0: string, arg1: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.distributeRewards(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.distributeRewards(arg0, arg1);
+            return result;
+        }
+    }
+    async finalizeCustomProposal(arg0: string, arg1: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.finalizeCustomProposal(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.finalizeCustomProposal(arg0, arg1);
+            return result;
+        }
+    }
+    async finalizeVote(arg0: string, arg1: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.finalizeVote(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.finalizeVote(arg0, arg1);
+            return result;
+        }
+    }
+    async getActiveVotes(): Promise<Array<MonthlyVote>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getActiveVotes();
+                return from_candid_vec_n13(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getActiveVotes();
+            return from_candid_vec_n13(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getAdminConfig(): Promise<{
+        gamesWallet: string;
+        neuronTopupAddress: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAdminConfig();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAdminConfig();
+            return result;
+        }
+    }
+    async getAllRewardTransactions(arg0: string): Promise<Array<RewardTransaction>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllRewardTransactions(arg0);
+                return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllRewardTransactions(arg0);
+            return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getAllVotes(): Promise<Array<MonthlyVote>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllVotes();
+                return from_candid_vec_n13(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllVotes();
+            return from_candid_vec_n13(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getAnnouncements(): Promise<Array<Announcement>> {
         if (this.processError) {
             try {
@@ -332,32 +640,63 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getBittyUsdPrice(): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getBittyUsdPrice();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getBittyUsdPrice();
+            return result;
+        }
+    }
     async getCallerUserProfile(): Promise<UserProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserProfile();
-                return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n19(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserProfile();
-            return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n19(this._uploadFile, this._downloadFile, result);
         }
     }
     async getCallerUserRole(): Promise<UserRole> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+                return from_candid_UserRole_n20(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+            return from_candid_UserRole_n20(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCanisterBalance(): Promise<{
+        icpE8s: bigint;
+        bittyE8s: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCanisterBalance();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCanisterBalance();
+            return result;
         }
     }
     async getChatMessages(arg0: bigint): Promise<Array<ChatMessage>> {
@@ -371,6 +710,90 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getChatMessages(arg0);
+            return result;
+        }
+    }
+    async getCustomProposalMeta(arg0: bigint): Promise<CustomProposalMeta | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCustomProposalMeta(arg0);
+                return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCustomProposalMeta(arg0);
+            return from_candid_opt_n22(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCustomProposals(): Promise<Array<CustomProposal>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCustomProposals();
+                return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCustomProposals();
+            return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCustomRewardsPools(): Promise<Array<CustomRewardsPoolEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCustomRewardsPools();
+                return from_candid_vec_n24(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCustomRewardsPools();
+            return from_candid_vec_n24(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCustomVoteAllocations(arg0: bigint): Promise<Array<CustomVoteAllocation>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCustomVoteAllocations(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCustomVoteAllocations(arg0);
+            return result;
+        }
+    }
+    async getCustomVoteResults(arg0: bigint): Promise<Array<CustomVoteResult>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCustomVoteResults(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCustomVoteResults(arg0);
+            return result;
+        }
+    }
+    async getIcpUsdPrice(): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getIcpUsdPrice();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getIcpUsdPrice();
             return result;
         }
     }
@@ -393,17 +816,76 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getProposals(): Promise<Array<Proposal>> {
+    async getMyRewardTransactions(arg0: string): Promise<Array<RewardTransaction>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getProposals();
+                const result = await this.actor.getMyRewardTransactions(arg0);
+                return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMyRewardTransactions(arg0);
+            return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getMyVerifiedWallets(): Promise<Array<string>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMyVerifiedWallets();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getProposals();
+            const result = await this.actor.getMyVerifiedWallets();
+            return result;
+        }
+    }
+    async getPendingDistributions(): Promise<Array<PendingDistribution>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getPendingDistributions();
+                return from_candid_vec_n27(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getPendingDistributions();
+            return from_candid_vec_n27(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getRewardsPools(): Promise<Array<RewardsPoolEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getRewardsPools();
+                return from_candid_vec_n30(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getRewardsPools();
+            return from_candid_vec_n30(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getTotalRewardsDistributed(): Promise<{
+        totalICP: bigint;
+        totalBITTY: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getTotalRewardsDistributed();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getTotalRewardsDistributed();
             return result;
         }
     }
@@ -411,42 +893,104 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserProfile(arg0);
-                return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n19(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUserProfile(arg0);
-            return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n19(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getVotesForProposal(arg0: bigint): Promise<Array<Vote>> {
+    async getVoteAllocations(arg0: bigint): Promise<Array<VoteAllocation>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getVotesForProposal(arg0);
+                const result = await this.actor.getVoteAllocations(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getVotesForProposal(arg0);
+            const result = await this.actor.getVoteAllocations(arg0);
             return result;
         }
     }
-    async hasVoted(arg0: bigint, arg1: string): Promise<boolean> {
+    async getVoteResults(arg0: bigint): Promise<Array<VoteResult>> {
         if (this.processError) {
             try {
-                const result = await this.actor.hasVoted(arg0, arg1);
+                const result = await this.actor.getVoteResults(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.hasVoted(arg0, arg1);
+            const result = await this.actor.getVoteResults(arg0);
             return result;
+        }
+    }
+    async getWalletOwner(arg0: string): Promise<string | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getWalletOwner(arg0);
+                return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getWalletOwner(arg0);
+            return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async hasVotedOnCustomProposal(arg0: bigint, arg1: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.hasVotedOnCustomProposal(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.hasVotedOnCustomProposal(arg0, arg1);
+            return result;
+        }
+    }
+    async hasVotedOnVote(arg0: bigint, arg1: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.hasVotedOnVote(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.hasVotedOnVote(arg0, arg1);
+            return result;
+        }
+    }
+    async initWalletVerification(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: bigint;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.initWalletVerification(arg0);
+                return from_candid_variant_n34(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.initWalletVerification(arg0);
+            return from_candid_variant_n34(this._uploadFile, this._downloadFile, result);
         }
     }
     async isCallerAdmin(): Promise<boolean> {
@@ -463,6 +1007,62 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async isExternalWalletClaimed(arg0: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.isExternalWalletClaimed(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.isExternalWalletClaimed(arg0);
+            return result;
+        }
+    }
+    async markCustomRewardsDistributed(arg0: string, arg1: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.markCustomRewardsDistributed(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.markCustomRewardsDistributed(arg0, arg1);
+            return result;
+        }
+    }
+    async markRewardsDistributed(arg0: string, arg1: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.markRewardsDistributed(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.markRewardsDistributed(arg0, arg1);
+            return result;
+        }
+    }
+    async retryPendingDistributions(): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.retryPendingDistributions();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.retryPendingDistributions();
+            return result;
+        }
+    }
     async saveCallerUserProfile(arg0: UserProfile): Promise<void> {
         if (this.processError) {
             try {
@@ -474,6 +1074,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async setCustomProposalAmount(arg0: string, arg1: bigint, arg2: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setCustomProposalAmount(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setCustomProposalAmount(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async setGamesWallet(arg0: string, arg1: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setGamesWallet(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setGamesWallet(arg0, arg1);
             return result;
         }
     }
@@ -519,6 +1147,76 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async setNeuronTopupAddress(arg0: string, arg1: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setNeuronTopupAddress(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setNeuronTopupAddress(arg0, arg1);
+            return result;
+        }
+    }
+    async setVoteAmount(arg0: string, arg1: bigint, arg2: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setVoteAmount(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setVoteAmount(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async setVoteAmountFromTreasury(arg0: string, arg1: bigint, arg2: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setVoteAmountFromTreasury(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setVoteAmountFromTreasury(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async transformHttpResponse(arg0: TransformationInput): Promise<TransformationOutput> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.transformHttpResponse(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.transformHttpResponse(arg0);
+            return result;
+        }
+    }
+    async unverifyWallet(arg0: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.unverifyWallet(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.unverifyWallet(arg0);
+            return result;
+        }
+    }
     async updateAnnouncement(arg0: string, arg1: bigint, arg2: string, arg3: string): Promise<boolean> {
         if (this.processError) {
             try {
@@ -533,170 +1231,242 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getActiveVotes(): Promise<any[]> {
-        const result = await this.actor.getActiveVotes();
-        return result;
-    }
-    async getAllVotes(): Promise<any[]> {
-        const result = await this.actor.getAllVotes();
-        return result;
-    }
-    async castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean> {
-        const result = await this.actor.castSplitVote(voteId, voterPrincipal, pctA, pctB, pctC, votingPower);
-        return result;
-    }
-    async hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean> {
-        const result = await this.actor.hasVotedOnVote(voteId, voterPrincipal);
-        return result;
-    }
-    async getVoteAllocations(voteId: bigint): Promise<any[]> {
-        const result = await this.actor.getVoteAllocations(voteId);
-        return result;
-    }
-    async getVoteResults(voteId: bigint): Promise<any[]> {
-        const result = await this.actor.getVoteResults(voteId);
-        return result;
-    }
-    async setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean> {
-        const result = await this.actor.setVoteAmount(password, voteId, amount);
-        return result;
-    }
-    async finalizeVote(password: string, voteId: bigint): Promise<boolean> {
-        const result = await this.actor.finalizeVote(password, voteId);
-        return result;
-    }
-    async markRewardsDistributed(password: string, voteId: bigint): Promise<boolean> {
-        const result = await this.actor.markRewardsDistributed(password, voteId);
-        return result;
-    }
-    async distributeRewards(password: string, voteId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }> {
-        const result = await this.actor.distributeRewards(password, voteId);
-        return result;
-    }
-    async distributeCustomRewards(password: string, proposalId: bigint): Promise<{ success: boolean; transferCount: bigint; errors: string[] }> {
-        const result = await this.actor.distributeCustomRewards(password, proposalId);
-        return result;
-    }
-    async retryPendingDistributions(): Promise<void> {
-        await this.actor.retryPendingDistributions();
-    }
-    async getRewardsPools(): Promise<any[]> {
-        const result = await this.actor.getRewardsPools();
-        return result;
-    }
-    async setNeuronTopupAddress(password: string, addr: string): Promise<boolean> {
-        const result = await this.actor.setNeuronTopupAddress(password, addr);
-        return result;
-    }
-    async setGamesWallet(password: string, addr: string): Promise<boolean> {
-        const result = await this.actor.setGamesWallet(password, addr);
-        return result;
-    }
-    async getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }> {
-        const result = await this.actor.getAdminConfig();
-        return result;
-    }
-    async createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<any | null> {
-        const result = await this.actor.createCustomProposal(password, title, description, voteType, options, closeTimeNs, voteAmount, destinationAddress);
-        return result.length === 0 ? null : result[0];
-    }
-    async getCustomProposals(): Promise<any[]> {
-        const result = await this.actor.getCustomProposals();
-        return result;
-    }
-    async castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: any[], votingPower: bigint): Promise<boolean> {
-        const result = await this.actor.castCustomVote(proposalId, voterPrincipal, allocations, votingPower);
-        return result;
-    }
-    async hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean> {
-        const result = await this.actor.hasVotedOnCustomProposal(proposalId, voterPrincipal);
-        return result;
-    }
-    async getCustomVoteAllocations(proposalId: bigint): Promise<any[]> {
-        const result = await this.actor.getCustomVoteAllocations(proposalId);
-        return result;
-    }
-    async getCustomVoteResults(proposalId: bigint): Promise<any[]> {
-        const result = await this.actor.getCustomVoteResults(proposalId);
-        return result;
-    }
-    async setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean> {
-        const result = await this.actor.setCustomProposalAmount(password, proposalId, amount);
-        return result;
-    }
-    async finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean> {
-        const result = await this.actor.finalizeCustomProposal(password, proposalId);
-        return result;
-    }
-    async getCustomRewardsPools(): Promise<any[]> {
-        const result = await this.actor.getCustomRewardsPools();
-        return result;
-    }
-    async markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean> {
-        const result = await this.actor.markCustomRewardsDistributed(password, proposalId);
-        return result;
-    }
-    async initWalletVerification(externalWallet: string): Promise<{ ok: bigint } | { err: string }> {
-        const result = await this.actor.initWalletVerification(externalWallet);
-        return result;
-    }
-    async confirmWalletVerification(externalWallet: string): Promise<{ ok: null } | { err: string }> {
-        const result = await this.actor.confirmWalletVerification(externalWallet);
-        return result;
-    }
-    async getMyVerifiedWallets(): Promise<string[]> {
-        const result = await this.actor.getMyVerifiedWallets();
-        return result;
-    }
-    async isExternalWalletClaimed(wallet: string): Promise<boolean> {
-        const result = await this.actor.isExternalWalletClaimed(wallet);
-        return result;
-    }
-    async getWalletOwner(wallet: string): Promise<string | null> {
-        const result = await this.actor.getWalletOwner(wallet);
-        return result.length === 0 ? null : result[0];
-    }
-    async verifyExternalWallet(externalWallet: string): Promise<{ ok: null } | { err: string }> {
-        const result = await this.actor.verifyExternalWallet(externalWallet);
-        return result;
-    }
-    async adminResetVerifiedWallets(password: string): Promise<boolean> {
-        const result = await this.actor.adminResetVerifiedWallets(password);
-        return result;
-    }
-    async unverifyWallet(externalWallet: string): Promise<boolean> {
-        const result = await this.actor.unverifyWallet(externalWallet);
-        return result;
-    }
-    async getIcpUsdPrice(): Promise<string> {
-        const result = await this.actor.getIcpUsdPrice();
-        return result;
-    }
-    async getBittyUsdPrice(): Promise<string> {
-        const result = await this.actor.getBittyUsdPrice();
-        return result;
-    }
-    async getTotalRewardsDistributed(): Promise<{ totalICP: bigint; totalBITTY: bigint }> {
-        const result = await this.actor.getTotalRewardsDistributed();
-        return result;
+    async verifyExternalWallet(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.verifyExternalWallet(arg0);
+                return from_candid_variant_n5(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.verifyExternalWallet(arg0);
+            return from_candid_variant_n5(this._uploadFile, this._downloadFile, result);
+        }
     }
 }
-function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n8(_uploadFile, _downloadFile, value);
+function from_candid_CustomProposal_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _CustomProposal): CustomProposal {
+    return from_candid_record_n10(_uploadFile, _downloadFile, value);
+}
+function from_candid_CustomRewardsPoolEntry_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _CustomRewardsPoolEntry): CustomRewardsPoolEntry {
+    return from_candid_record_n26(_uploadFile, _downloadFile, value);
+}
+function from_candid_MonthlyVote_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _MonthlyVote): MonthlyVote {
+    return from_candid_record_n15(_uploadFile, _downloadFile, value);
+}
+function from_candid_PendingDistribution_n28(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PendingDistribution): PendingDistribution {
+    return from_candid_record_n29(_uploadFile, _downloadFile, value);
+}
+function from_candid_RewardTransaction_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RewardTransaction): RewardTransaction {
+    return from_candid_record_n18(_uploadFile, _downloadFile, value);
+}
+function from_candid_RewardsPoolEntry_n31(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _RewardsPoolEntry): RewardsPoolEntry {
+    return from_candid_record_n32(_uploadFile, _downloadFile, value);
+}
+function from_candid_UserRole_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n21(_uploadFile, _downloadFile, value);
+}
+function from_candid_VoteType_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _VoteType): VoteType {
+    return from_candid_variant_n12(_uploadFile, _downloadFile, value);
 }
 function from_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Announcement]): Announcement | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_ChatMessage]): ChatMessage | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Proposal]): Proposal | null {
+function from_candid_opt_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_CustomProposalMeta]): CustomProposalMeta | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+function from_candid_opt_n33(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_opt_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_CustomProposal]): CustomProposal | null {
+    return value.length === 0 ? null : from_candid_CustomProposal_n9(_uploadFile, _downloadFile, value[0]);
+}
+function from_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    title: string;
+    closeTime: bigint;
+    voteType: _VoteType;
+    totalVoteAmount: string;
+    description: string;
+    isFinalized: boolean;
+    options: Array<string>;
+    openTime: bigint;
+}): {
+    id: bigint;
+    title: string;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
+    description: string;
+    isFinalized: boolean;
+    options: Array<string>;
+    openTime: bigint;
+} {
+    return {
+        id: value.id,
+        title: value.title,
+        closeTime: value.closeTime,
+        voteType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.voteType),
+        totalVoteAmount: value.totalVoteAmount,
+        description: value.description,
+        isFinalized: value.isFinalized,
+        options: value.options,
+        openTime: value.openTime
+    };
+}
+function from_candid_record_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    month: bigint;
+    closeTime: bigint;
+    voteType: _VoteType;
+    totalVoteAmount: string;
+    year: bigint;
+    isFinalized: boolean;
+    openTime: bigint;
+}): {
+    id: bigint;
+    month: bigint;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
+    year: bigint;
+    isFinalized: boolean;
+    openTime: bigint;
+} {
+    return {
+        id: value.id,
+        month: value.month,
+        closeTime: value.closeTime,
+        voteType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.voteType),
+        totalVoteAmount: value.totalVoteAmount,
+        year: value.year,
+        isFinalized: value.isFinalized,
+        openTime: value.openTime
+    };
+}
+function from_candid_record_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    recipient: string;
+    voteId: bigint;
+    timestamp: bigint;
+    tokenType: _VoteType;
+    amount: bigint;
+    voteTitle: string;
+    proposalId: bigint;
+}): {
+    id: bigint;
+    recipient: string;
+    voteId: bigint;
+    timestamp: bigint;
+    tokenType: VoteType;
+    amount: bigint;
+    voteTitle: string;
+    proposalId: bigint;
+} {
+    return {
+        id: value.id,
+        recipient: value.recipient,
+        voteId: value.voteId,
+        timestamp: value.timestamp,
+        tokenType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.tokenType),
+        amount: value.amount,
+        voteTitle: value.voteTitle,
+        proposalId: value.proposalId
+    };
+}
+function from_candid_record_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    distributed: boolean;
+    voteType: _VoteType;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    proposalId: bigint;
+    poolAmount: string;
+}): {
+    distributed: boolean;
+    voteType: VoteType;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    proposalId: bigint;
+    poolAmount: string;
+} {
+    return {
+        distributed: value.distributed,
+        voteType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.voteType),
+        losingOptionPct: value.losingOptionPct,
+        losingOptionLabel: value.losingOptionLabel,
+        proposalId: value.proposalId,
+        poolAmount: value.poolAmount
+    };
+}
+function from_candid_record_n29(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    title: string;
+    voteType: _VoteType;
+    voteId: bigint;
+    amountNeeded: string;
+    isCustom: boolean;
+    proposalId: bigint;
+}): {
+    title: string;
+    voteType: VoteType;
+    voteId: bigint;
+    amountNeeded: string;
+    isCustom: boolean;
+    proposalId: bigint;
+} {
+    return {
+        title: value.title,
+        voteType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.voteType),
+        voteId: value.voteId,
+        amountNeeded: value.amountNeeded,
+        isCustom: value.isCustom,
+        proposalId: value.proposalId
+    };
+}
+function from_candid_record_n32(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    distributed: boolean;
+    voteType: _VoteType;
+    voteId: bigint;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    poolAmount: string;
+}): {
+    distributed: boolean;
+    voteType: VoteType;
+    voteId: bigint;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    poolAmount: string;
+} {
+    return {
+        distributed: value.distributed,
+        voteType: from_candid_VoteType_n11(_uploadFile, _downloadFile, value.voteType),
+        voteId: value.voteId,
+        losingOptionPct: value.losingOptionPct,
+        losingOptionLabel: value.losingOptionLabel,
+        poolAmount: value.poolAmount
+    };
+}
+function from_candid_variant_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ICP: null;
+} | {
+    BITTYICP: null;
+}): VoteType {
+    return "ICP" in value ? VoteType.ICP : "BITTYICP" in value ? VoteType.BITTYICP : value;
+}
+function from_candid_variant_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     admin: null;
 } | {
     user: null;
@@ -705,8 +1475,67 @@ function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
+function from_candid_variant_n34(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ok: bigint;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: bigint;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ok: null;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_vec_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_MonthlyVote>): Array<MonthlyVote> {
+    return value.map((x)=>from_candid_MonthlyVote_n14(_uploadFile, _downloadFile, x));
+}
+function from_candid_vec_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_RewardTransaction>): Array<RewardTransaction> {
+    return value.map((x)=>from_candid_RewardTransaction_n17(_uploadFile, _downloadFile, x));
+}
+function from_candid_vec_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_CustomProposal>): Array<CustomProposal> {
+    return value.map((x)=>from_candid_CustomProposal_n9(_uploadFile, _downloadFile, x));
+}
+function from_candid_vec_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_CustomRewardsPoolEntry>): Array<CustomRewardsPoolEntry> {
+    return value.map((x)=>from_candid_CustomRewardsPoolEntry_n25(_uploadFile, _downloadFile, x));
+}
+function from_candid_vec_n27(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_PendingDistribution>): Array<PendingDistribution> {
+    return value.map((x)=>from_candid_PendingDistribution_n28(_uploadFile, _downloadFile, x));
+}
+function from_candid_vec_n30(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_RewardsPoolEntry>): Array<RewardsPoolEntry> {
+    return value.map((x)=>from_candid_RewardsPoolEntry_n31(_uploadFile, _downloadFile, x));
+}
 function to_candid_UserRole_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n4(_uploadFile, _downloadFile, value);
+}
+function to_candid_VoteType_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: VoteType): _VoteType {
+    return to_candid_variant_n7(_uploadFile, _downloadFile, value);
 }
 function to_candid_variant_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
     admin: null;
@@ -721,6 +1550,17 @@ function to_candid_variant_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8
         user: null
     } : value == UserRole.guest ? {
         guest: null
+    } : value;
+}
+function to_candid_variant_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: VoteType): {
+    ICP: null;
+} | {
+    BITTYICP: null;
+} {
+    return value == VoteType.ICP ? {
+        ICP: null
+    } : value == VoteType.BITTYICP ? {
+        BITTYICP: null
     } : value;
 }
 export interface CreateActorOptions {

@@ -33,7 +33,7 @@ function timeRemaining(endTime: bigint): string {
 }
 
 function getVoteOptions(vote: MonthlyVote): [string, string, string] {
-  if ("ICP" in vote.voteType) {
+  if ("ICP" in (vote.voteType as any)) {
     return [
       "BUY $BITTYICP & STORE IN TREASURY",
       "INVEST INTO NEURON",
@@ -71,7 +71,7 @@ function HistoryVoteCard({ vote }: { vote: MonthlyVote }) {
   const [results, setResults] = useState<VoteResult[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isICP = "ICP" in vote.voteType;
+  const isICP = "ICP" in (vote.voteType as any);
   const status = getStatusInfo(vote);
   const now = BigInt(Date.now()) * BigInt(1_000_000);
   const isLive =

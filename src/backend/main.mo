@@ -1,18 +1,20 @@
 import Array "mo:core/Array";
 import Time "mo:core/Time";
 import Text "mo:core/Text";
-import Nat "mo:core/Nat";
 import Int "mo:core/Int";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Map "mo:core/Map";
 import Char "mo:core/Char";
+import Nat "mo:core/Nat";
+import Migration "migration";
 import Outcall "http-outcalls/outcall";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
-
+// Use migration during upgrade
+(with migration = Migration.run)
 actor {
   //------------------------------ Access Control ------------------------------
 
@@ -214,9 +216,162 @@ actor {
   // Pending distributions (finalized but underfunded)
   stable var pendingDistributions : [PendingDistribution] = [];
 
+  // Heartbeat count - increment on every heartbeat
+  stable var heartbeatCount : Nat = 0;
+
   let ADMIN_PASSWORD = "bittybittywhatwhat";
 
   let userProfiles = Map.empty<Principal, UserProfile>();
+
+  //------------------------------ Canister Heartbeat ------------------------------
+
+  func autoFinalizeExpiredInternal() : async () {
+    // Copy-paste from previous logic
+    let nowNs = Time.now();
+
+    // --- Monthly votes ---
+    let expiredVotes = monthlyVotes.filter(func(v : MonthlyVote) : Bool {
+      not v.isFinalized and nowNs > v.closeTime
+    });
+    for (v in expiredVotes.values()) {
+      monthlyVotes := monthlyVotes.map(func(mv : MonthlyVote) : MonthlyVote {
+        if (mv.id == v.id) {
+          { id = mv.id; voteType = mv.voteType; month = mv.month; year = mv.year;
+            openTime = mv.openTime; closeTime = mv.closeTime; isFinalized = true;
+            totalVoteAmount = mv.totalVoteAmount };
+        } else { mv };
+      });
+      let results = computeVoteResults(v.id);
+      if (results.size() >= 3) {
+        var losingLabel = results[0].optionLabel;
+        var losingPct = results[0].totalWeightedPct;
+        for (r in results.vals()) {
+          if (r.totalWeightedPct < losingPct) {
+            losingPct := r.totalWeightedPct;
+            losingLabel := r.optionLabel;
+          };
+        };
+        rewardsPools := rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId != v.id });
+        let entry : RewardsPoolEntry = {
+          voteId = v.id;
+          voteType = v.voteType;
+          losingOptionLabel = losingLabel;
+          losingOptionPct = losingPct;
+          poolAmount = v.totalVoteAmount;
+          distributed = false;
+        };
+        rewardsPools := rewardsPools.concat([entry]);
+        let totalPool = parseNatText(v.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (v.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            ignore await distributeRewardsInternal(v.id, entry);
+            let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
+            ignore sendRemainderToTreasury(v.voteType, winningAmount);
+          } else {
+            removePendingDistribution(false, v.id);
+            let pending : PendingDistribution = {
+              isCustom = false;
+              voteId = v.id;
+              proposalId = 0;
+              voteType = v.voteType;
+              amountNeeded = rewardsTotal.toText();
+              title = getVoteTitle(v.id);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
+      };
+    };
+
+    // --- Custom proposals ---
+    let expiredProps = customProposals.filter(func(p : CustomProposal) : Bool {
+      not p.isFinalized and nowNs > p.closeTime
+    });
+
+    for (p in expiredProps.values()) {
+      customProposals := customProposals.map(func(cp : CustomProposal) : CustomProposal {
+        if (cp.id == p.id) {
+          { id = cp.id; title = cp.title; description = cp.description; voteType = cp.voteType;
+            options = cp.options; openTime = cp.openTime; closeTime = cp.closeTime;
+            isFinalized = true; totalVoteAmount = cp.totalVoteAmount };
+        } else { cp };
+      });
+      let results = computeCustomVoteResults(p.id);
+      if (results.size() > 0) {
+        var losingLabel = results[0].optionLabel;
+        var losingPct = results[0].totalWeightedPct;
+        for (r in results.vals()) {
+          if (r.totalWeightedPct < losingPct) {
+            losingPct := r.totalWeightedPct;
+            losingLabel := r.optionLabel;
+          };
+        };
+        customRewardsPools := customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId != p.id });
+        let entry : CustomRewardsPoolEntry = {
+          proposalId = p.id;
+          voteType = p.voteType;
+          losingOptionLabel = losingLabel;
+          losingOptionPct = losingPct;
+          poolAmount = p.totalVoteAmount;
+          distributed = false;
+        };
+        customRewardsPools := customRewardsPools.concat([entry]);
+        let totalPool = parseNatText(p.totalVoteAmount);
+        if (totalPool > 0 and losingPct > 0) {
+          let rewardsTotal = totalPool * losingPct / 100;
+          let ledgerId = switch (p.voteType) {
+            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
+            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
+          };
+          let checkLedger = actor(ledgerId) : actor {
+            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+          };
+          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
+          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
+          if (bal >= rewardsTotal) {
+            ignore await distributeCustomRewardsInternal(p.id, entry);
+            let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
+            let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == p.id }).values().next();
+            switch (metaOpt) {
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmount) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmount) };
+            };
+          } else {
+            removePendingDistribution(true, p.id);
+            let pending : PendingDistribution = {
+              isCustom = true;
+              voteId = 0;
+              proposalId = p.id;
+              voteType = p.voteType;
+              amountNeeded = rewardsTotal.toText();
+              title = getCustomProposalTitle(p.id);
+            };
+            pendingDistributions := pendingDistributions.concat([pending]);
+          };
+        };
+      };
+    };
+  };
+
+  // Hourly heartbeat - triggers auto-finalization every 3600 pulses
+  system func heartbeat() : async () {
+    heartbeatCount += 1;
+    if (heartbeatCount % 3600 == 0) {
+      try {
+        await autoFinalizeExpiredInternal();
+      } catch (_) {};
+    };
+  };
 
   //------------------------------ Time Helpers ------------------------------
 
@@ -407,19 +562,24 @@ actor {
 
   //------------------------------ User Profile ------------------------------
 
-
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view profiles");
+    };
     userProfiles.get(caller);
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
     if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized");
+      Runtime.trap("Unauthorized: Can only view your own profile");
     };
     userProfiles.get(user);
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can save profiles");
+    };
     userProfiles.add(caller, profile);
   };
 
@@ -444,20 +604,29 @@ actor {
     { icp = manualICP; bitty = manualBITTY; fund = manualFund; bittyPriceUsd = manualBittyPriceUSD };
   };
 
-  public shared func setManualBalances(password : Text, icp : Text, bitty : Text) : async Bool {
+  public shared ({ caller }) func setManualBalances(password : Text, icp : Text, bitty : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     manualICP := icp;
     manualBITTY := bitty;
     true;
   };
 
-  public shared func setManualFundBalance(password : Text, fund : Text) : async Bool {
+  public shared ({ caller }) func setManualFundBalance(password : Text, fund : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     manualFund := fund;
     true;
   };
 
-  public shared func setManualBittyPrice(password : Text, price : Text) : async Bool {
+  public shared ({ caller }) func setManualBittyPrice(password : Text, price : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     manualBittyPriceUSD := price;
     true;
@@ -469,7 +638,10 @@ actor {
     announcements;
   };
 
-  public shared func addAnnouncement(password : Text, title : Text, body : Text) : async ?Announcement {
+  public shared ({ caller }) func addAnnouncement(password : Text, title : Text, body : Text) : async ?Announcement {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return null;
     let ann : Announcement = {
       id = nextAnnouncementId;
@@ -482,7 +654,10 @@ actor {
     ?ann;
   };
 
-  public shared func updateAnnouncement(password : Text, id : Nat, title : Text, body : Text) : async Bool {
+  public shared ({ caller }) func updateAnnouncement(password : Text, id : Nat, title : Text, body : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     announcements := announcements.map(
       func(a : Announcement) : Announcement {
@@ -492,7 +667,10 @@ actor {
     true;
   };
 
-  public shared func deleteAnnouncement(password : Text, id : Nat) : async Bool {
+  public shared ({ caller }) func deleteAnnouncement(password : Text, id : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     announcements := announcements.filter(func(a) { a.id != id });
     true;
@@ -580,6 +758,9 @@ actor {
     pctC : Nat,
     votingPower : Nat,
   ) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can vote");
+    };
     if (caller.toText() != voterPrincipal) {
       Runtime.trap("Unauthorized: caller does not match voterPrincipal");
     };
@@ -664,7 +845,10 @@ actor {
     computeVoteResults(voteId);
   };
 
-  public shared func setVoteAmount(password : Text, voteId : Nat, amount : Text) : async Bool {
+  public shared ({ caller }) func setVoteAmount(password : Text, voteId : Nat, amount : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     monthlyVotes := monthlyVotes.map(func(v : MonthlyVote) : MonthlyVote {
       if (v.id == voteId) {
@@ -677,7 +861,10 @@ actor {
   };
 
   // Set vote amount from live treasury balance (called by frontend when vote opens)
-  public shared func setVoteAmountFromTreasury(password : Text, voteId : Nat, amount : Text) : async Bool {
+  public shared ({ caller }) func setVoteAmountFromTreasury(password : Text, voteId : Nat, amount : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     // Only set if not already set
     let voteOpt = monthlyVotes.filter(func(v : MonthlyVote) : Bool { v.id == voteId }).values().next();
@@ -799,10 +986,12 @@ actor {
     } catch (_) {};
   };
 
-
   //------------------------------ Finalize Vote (with auto-distribution) ------------------------------
 
-  public shared func finalizeVote(password : Text, voteId : Nat) : async Bool {
+  public shared ({ caller }) func finalizeVote(password : Text, voteId : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     var foundVote : ?MonthlyVote = null;
     monthlyVotes := monthlyVotes.map(func(v : MonthlyVote) : MonthlyVote {
@@ -854,9 +1043,9 @@ actor {
           if (bal >= rewardsTotal) {
             // Sufficient funds: auto-distribute
             ignore await distributeRewardsInternal(voteId, entry);
-            // Send only the winning percentage back to treasury (not the entire canister balance)
-            let winningAmount1 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
-            ignore sendRemainderToTreasury(v.voteType, winningAmount1);
+            // Send remainder back to treasury
+            let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
+            ignore sendRemainderToTreasury(v.voteType, winningAmount);
           } else {
             // Insufficient: add to pending
             removePendingDistribution(false, voteId);
@@ -876,7 +1065,10 @@ actor {
     };
   };
 
-  public shared func markRewardsDistributed(password : Text, voteId : Nat) : async Bool {
+  public shared ({ caller }) func markRewardsDistributed(password : Text, voteId : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     rewardsPools := rewardsPools.map(func(r : RewardsPoolEntry) : RewardsPoolEntry {
       if (r.voteId == voteId) {
@@ -1022,7 +1214,10 @@ actor {
   };
 
   // Public: admin triggers distribution for monthly vote (also used for manual trigger after pending)
-  public shared func distributeRewards(password : Text, voteId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+  public shared ({ caller }) func distributeRewards(password : Text, voteId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
     let poolOpt = rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId == voteId }).values().next();
     switch (poolOpt) {
@@ -1030,10 +1225,11 @@ actor {
       case (?pool) {
         let result = await distributeRewardsInternal(voteId, pool);
         if (result.success) {
-          let totalPoolAmt = parseNatText(pool.poolAmount);
-          let rewardsPaid = totalPoolAmt * pool.losingOptionPct / 100;
-          let winningRemainder = if (totalPoolAmt > rewardsPaid) totalPoolAmt - rewardsPaid else 0;
-          ignore sendRemainderToTreasury(pool.voteType, winningRemainder);
+          // Send remainder back to treasury
+          let totalPool = parseNatText(pool.poolAmount);
+          let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+          let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
+          ignore sendRemainderToTreasury(pool.voteType, winningAmount);
         };
         result;
       };
@@ -1044,13 +1240,19 @@ actor {
     rewardsPools;
   };
 
-  public shared func setNeuronTopupAddress(password : Text, addr : Text) : async Bool {
+  public shared ({ caller }) func setNeuronTopupAddress(password : Text, addr : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     neuronTopupAddress := addr;
     true;
   };
 
-  public shared func setGamesWallet(password : Text, addr : Text) : async Bool {
+  public shared ({ caller }) func setGamesWallet(password : Text, addr : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     gamesWallet := addr;
     true;
@@ -1062,7 +1264,7 @@ actor {
 
   //------------------------------ Custom Proposals ------------------------------
 
-  public shared func createCustomProposal(
+  public shared ({ caller }) func createCustomProposal(
     password : Text,
     title : Text,
     description : Text,
@@ -1072,6 +1274,9 @@ actor {
     voteAmount : Text,
     destinationAddress : Text,
   ) : async ?CustomProposal {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return null;
     if (options.size() < 2 or options.size() > 6) return null;
     if (voteAmount == "" or destinationAddress == "") return null;
@@ -1113,6 +1318,9 @@ actor {
     allocations : [CustomOptionAlloc],
     votingPower : Nat,
   ) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can vote");
+    };
     if (caller.toText() != voterPrincipal) {
       Runtime.trap("Unauthorized: caller does not match voterPrincipal");
     };
@@ -1185,7 +1393,10 @@ actor {
     computeCustomVoteResults(proposalId);
   };
 
-  public shared func setCustomProposalAmount(password : Text, proposalId : Nat, amount : Text) : async Bool {
+  public shared ({ caller }) func setCustomProposalAmount(password : Text, proposalId : Nat, amount : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     customProposals := customProposals.map(func(p : CustomProposal) : CustomProposal {
       if (p.id == proposalId) {
@@ -1197,7 +1408,10 @@ actor {
     true;
   };
 
-  public shared func finalizeCustomProposal(password : Text, proposalId : Nat) : async Bool {
+  public shared ({ caller }) func finalizeCustomProposal(password : Text, proposalId : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     var foundProposal : ?CustomProposal = null;
     customProposals := customProposals.map(func(p : CustomProposal) : CustomProposal {
@@ -1248,11 +1462,11 @@ actor {
           let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
           if (bal >= rewardsTotal) {
             ignore await distributeCustomRewardsInternal(proposalId, entry);
-            let winningAmountC = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
+            let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
             let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
             switch (metaOpt) {
-              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmountC) };
-              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmountC) };
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmount) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmount) };
             };
           } else {
             removePendingDistribution(true, proposalId);
@@ -1276,7 +1490,10 @@ actor {
     customRewardsPools;
   };
 
-  public shared func markCustomRewardsDistributed(password : Text, proposalId : Nat) : async Bool {
+  public shared ({ caller }) func markCustomRewardsDistributed(password : Text, proposalId : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     customRewardsPools := customRewardsPools.map(func(r : CustomRewardsPoolEntry) : CustomRewardsPoolEntry {
       if (r.proposalId == proposalId) {
@@ -1401,7 +1618,10 @@ actor {
   };
 
   // Public: admin triggers distribution for custom proposals (also manual trigger for pending)
-  public shared func distributeCustomRewards(password : Text, proposalId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+  public shared ({ caller }) func distributeCustomRewards(password : Text, proposalId : Nat) : async { success : Bool; transferCount : Nat; errors : [Text] } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return { success = false; transferCount = 0; errors = ["Unauthorized"] };
     let poolOpt = customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId == proposalId }).values().next();
     switch (poolOpt) {
@@ -1409,13 +1629,13 @@ actor {
       case (?pool) {
         let result = await distributeCustomRewardsInternal(proposalId, pool);
         if (result.success) {
-          let totalPoolAmtC = parseNatText(pool.poolAmount);
-          let rewardsPaidC = totalPoolAmtC * pool.losingOptionPct / 100;
-          let winningRemainderC = if (totalPoolAmtC > rewardsPaidC) totalPoolAmtC - rewardsPaidC else 0;
+          let totalPool = parseNatText(pool.poolAmount);
+          let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+          let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
           let metaOpt2 = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
           switch (metaOpt2) {
-            case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pool.voteType, winningRemainderC) };
-            case (null) { ignore sendRemainderToTreasury(pool.voteType, winningRemainderC) };
+            case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pool.voteType, winningAmount) };
+            case (null) { ignore sendRemainderToTreasury(pool.voteType, winningAmount) };
           };
         };
         result;
@@ -1429,11 +1649,13 @@ actor {
     rewardTransactions.filter(func(tx : RewardTransaction) : Bool { tx.recipient == principal });
   };
 
-  public shared func getAllRewardTransactions(password : Text) : async [RewardTransaction] {
+  public shared ({ caller }) func getAllRewardTransactions(password : Text) : async [RewardTransaction] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return [];
     rewardTransactions;
   };
-
 
   public query func getTotalRewardsDistributed() : async { totalICP : Nat; totalBITTY : Nat } {
     var totalICP : Nat = 0;
@@ -1450,6 +1672,9 @@ actor {
   //------------------------------ Community Chat ------------------------------
 
   public shared ({ caller }) func addChatMessage(voteId : Nat, author : Text, message : Text) : async ?ChatMessage {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can post messages");
+    };
     if (caller.toText() != author) {
       Runtime.trap("Unauthorized: cannot post as another user");
     };
@@ -1510,6 +1735,9 @@ actor {
   };
 
   public shared ({ caller }) func initWalletVerification(externalWallet : Text) : async { #ok : Nat; #err : Text } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can verify wallets");
+    };
     let callerText = caller.toText();
     if (callerText == externalWallet) {
       return #err("Cannot verify your own app principal as an external wallet");
@@ -1528,6 +1756,9 @@ actor {
   };
 
   public shared ({ caller }) func confirmWalletVerification(externalWallet : Text) : async { #ok; #err : Text } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can verify wallets");
+    };
     let callerText = caller.toText();
     switch (getPendingVerification(callerText, externalWallet)) {
       case (null) { return #err("No pending verification found. Please start verification again.") };
@@ -1557,6 +1788,9 @@ actor {
   };
 
   public query ({ caller }) func getMyVerifiedWallets() : async [Text] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view verified wallets");
+    };
     getUserWallets(caller.toText());
   };
 
@@ -1572,6 +1806,9 @@ actor {
   };
 
   public shared ({ caller }) func verifyExternalWallet(externalWallet : Text) : async { #ok; #err : Text } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can verify wallets");
+    };
     let callerText = caller.toText();
     if (callerText == externalWallet) {
       return #err("Cannot verify your own app principal as an external wallet");
@@ -1595,9 +1832,11 @@ actor {
     #ok;
   };
 
-
   // Admin: reset all verified wallets (fresh start)
-  public shared func adminResetVerifiedWallets(password : Text) : async Bool {
+  public shared ({ caller }) func adminResetVerifiedWallets(password : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can perform this action");
+    };
     if (not isAdmin(password)) return false;
     verifiedWalletOwners := [];
     userVerifiedWallets := [];
@@ -1607,6 +1846,9 @@ actor {
 
   // User: unverify a single external wallet
   public shared ({ caller }) func unverifyWallet(externalWallet : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can unverify wallets");
+    };
     let callerText = caller.toText();
     verifiedWalletOwners := verifiedWalletOwners.filter(func(e : (Text, Text)) : Bool {
       not (e.0 == externalWallet and e.1 == callerText)
@@ -1620,7 +1862,6 @@ actor {
     true;
   };
 
-
   // Auto-seed monthly votes on fresh deploy or upgrade
   func seedCurrentMonthlyVotes() {
     let nowNs = Time.now();
@@ -1632,146 +1873,12 @@ actor {
     ensureVotesForMonthYear(nextMonth, nextYear);
   };
 
-
   // Auto-finalize all expired votes and proposals (no password required).
   // Safe to call publicly -- only acts when Time.now() > closeTime and not yet finalized.
   // The existing finalize logic already handles auto-distribution + remainder transfer.
   public shared func autoFinalizeExpired() : async () {
-    let nowNs = Time.now();
-
-    // --- Monthly votes ---
-    let expiredVotes = monthlyVotes.filter(func(v : MonthlyVote) : Bool {
-      not v.isFinalized and nowNs > v.closeTime
-    });
-    for (v in expiredVotes.values()) {
-      // Mark finalized
-      monthlyVotes := monthlyVotes.map(func(mv : MonthlyVote) : MonthlyVote {
-        if (mv.id == v.id) {
-          { id = mv.id; voteType = mv.voteType; month = mv.month; year = mv.year;
-            openTime = mv.openTime; closeTime = mv.closeTime; isFinalized = true;
-            totalVoteAmount = mv.totalVoteAmount };
-        } else { mv };
-      });
-      // Compute results and build rewards pool
-      let results = computeVoteResults(v.id);
-      if (results.size() >= 3) {
-        var losingLabel = results[0].optionLabel;
-        var losingPct = results[0].totalWeightedPct;
-        for (r in results.vals()) {
-          if (r.totalWeightedPct < losingPct) {
-            losingPct := r.totalWeightedPct;
-            losingLabel := r.optionLabel;
-          };
-        };
-        rewardsPools := rewardsPools.filter(func(r : RewardsPoolEntry) : Bool { r.voteId != v.id });
-        let entry : RewardsPoolEntry = {
-          voteId = v.id;
-          voteType = v.voteType;
-          losingOptionLabel = losingLabel;
-          losingOptionPct = losingPct;
-          poolAmount = v.totalVoteAmount;
-          distributed = false;
-        };
-        rewardsPools := rewardsPools.concat([entry]);
-        // Attempt auto-distribution
-        let totalPool = parseNatText(v.totalVoteAmount);
-        if (totalPool > 0 and losingPct > 0) {
-          let rewardsTotal = totalPool * losingPct / 100;
-          let ledgerId = switch (v.voteType) {
-            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
-            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
-          };
-          let checkLedger = actor(ledgerId) : actor {
-            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
-          };
-          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
-          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
-          if (bal >= rewardsTotal) {
-            ignore await distributeRewardsInternal(v.id, entry);
-            let winningAmt5 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
-            ignore sendRemainderToTreasury(v.voteType, winningAmt5);
-          } else {
-            removePendingDistribution(false, v.id);
-            let pending : PendingDistribution = {
-              isCustom = false; voteId = v.id; proposalId = 0;
-              voteType = v.voteType; amountNeeded = rewardsTotal.toText();
-              title = getVoteTitle(v.id);
-            };
-            pendingDistributions := pendingDistributions.concat([pending]);
-          };
-        };
-      };
-    };
-
-    // --- Custom proposals ---
-    let expiredProps = customProposals.filter(func(p : CustomProposal) : Bool {
-      not p.isFinalized and nowNs > p.closeTime
-    });
-    for (p in expiredProps.values()) {
-      // Mark finalized
-      customProposals := customProposals.map(func(cp : CustomProposal) : CustomProposal {
-        if (cp.id == p.id) {
-          { id = cp.id; title = cp.title; description = cp.description; voteType = cp.voteType;
-            options = cp.options; openTime = cp.openTime; closeTime = cp.closeTime;
-            isFinalized = true; totalVoteAmount = cp.totalVoteAmount };
-        } else { cp };
-      });
-      // Compute results and build custom rewards pool
-      let results = computeCustomVoteResults(p.id);
-      if (results.size() > 0) {
-        var losingLabel = results[0].optionLabel;
-        var losingPct = results[0].totalWeightedPct;
-        for (r in results.vals()) {
-          if (r.totalWeightedPct < losingPct) {
-            losingPct := r.totalWeightedPct;
-            losingLabel := r.optionLabel;
-          };
-        };
-        customRewardsPools := customRewardsPools.filter(func(r : CustomRewardsPoolEntry) : Bool { r.proposalId != p.id });
-        let entry : CustomRewardsPoolEntry = {
-          proposalId = p.id;
-          voteType = p.voteType;
-          losingOptionLabel = losingLabel;
-          losingOptionPct = losingPct;
-          poolAmount = p.totalVoteAmount;
-          distributed = false;
-        };
-        customRewardsPools := customRewardsPools.concat([entry]);
-        // Attempt auto-distribution
-        let totalPool = parseNatText(p.totalVoteAmount);
-        if (totalPool > 0 and losingPct > 0) {
-          let rewardsTotal = totalPool * losingPct / 100;
-          let ledgerId = switch (p.voteType) {
-            case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
-            case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
-          };
-          let checkLedger = actor(ledgerId) : actor {
-            icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
-          };
-          let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
-          let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
-          if (bal >= rewardsTotal) {
-            ignore await distributeCustomRewardsInternal(p.id, entry);
-            let winningAmt6 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
-            let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == p.id }).values().next();
-            switch (metaOpt) {
-              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmt6) };
-              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmt6) };
-            };
-          } else {
-            removePendingDistribution(true, p.id);
-            let pending : PendingDistribution = {
-              isCustom = true; voteId = 0; proposalId = p.id;
-              voteType = p.voteType; amountNeeded = rewardsTotal.toText();
-              title = getCustomProposalTitle(p.id);
-            };
-            pendingDistributions := pendingDistributions.concat([pending]);
-          };
-        };
-      };
-    };
+    await autoFinalizeExpiredInternal();
   };
-
 
   // Retry any pending distributions that now have sufficient canister balance
   public shared func retryPendingDistributions() : async () {
@@ -1797,13 +1904,13 @@ actor {
             switch (poolOpt) {
               case (?pool) {
                 ignore await distributeCustomRewardsInternal(pd.proposalId, pool);
-                let totalPoolR = parseNatText(pool.poolAmount);
-                let rewardsPaidR = totalPoolR * pool.losingOptionPct / 100;
-                let winningAmtR = if (totalPoolR > rewardsPaidR) totalPoolR - rewardsPaidR else 0;
+                let totalPool = parseNatText(pool.poolAmount);
+                let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+                let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
                 let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == pd.proposalId }).values().next();
                 switch (metaOpt) {
-                  case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pd.voteType, winningAmtR) };
-                  case (null) { ignore sendRemainderToTreasury(pd.voteType, winningAmtR) };
+                  case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pd.voteType, winningAmount) };
+                  case (null) { ignore sendRemainderToTreasury(pd.voteType, winningAmount) };
                 };
               };
               case (null) { removePendingDistribution(true, pd.proposalId) };
@@ -1816,10 +1923,10 @@ actor {
             switch (poolOpt) {
               case (?pool) {
                 ignore await distributeRewardsInternal(pd.voteId, pool);
-                let totalPoolS = parseNatText(pool.poolAmount);
-                let rewardsPaidS = totalPoolS * pool.losingOptionPct / 100;
-                let winningAmtS = if (totalPoolS > rewardsPaidS) totalPoolS - rewardsPaidS else 0;
-                ignore sendRemainderToTreasury(pd.voteType, winningAmtS);
+                let totalPool = parseNatText(pool.poolAmount);
+                let rewardsTotal = totalPool * pool.losingOptionPct / 100;
+                let winningAmount = if (totalPool >= rewardsTotal) totalPool - rewardsTotal else 0;
+                ignore sendRemainderToTreasury(pd.voteType, winningAmount);
               };
               case (null) { removePendingDistribution(false, pd.voteId) };
             };
@@ -1829,9 +1936,7 @@ actor {
     };
   };
 
-
-    system func postupgrade() {
+  system func postupgrade() {
     seedCurrentMonthlyVotes();
   };
-
 };

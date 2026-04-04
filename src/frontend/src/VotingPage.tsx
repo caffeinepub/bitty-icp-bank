@@ -174,7 +174,7 @@ function formatTimestamp(ts: bigint): string {
 }
 
 function getVoteOptions(vote: MonthlyVote): [string, string, string] {
-  if ("ICP" in vote.voteType) {
+  if ("ICP" in (vote.voteType as any)) {
     return [
       "BUY $BITTYICP & STORE IN TREASURY",
       "INVEST INTO NEURON",
@@ -1068,16 +1068,14 @@ function VoteCard({
   votingPower,
   actor,
   isAdmin,
-  adminPassword,
 }: {
   vote: MonthlyVote;
   principal: string | null;
   votingPower: number;
   actor: any;
   isAdmin: boolean;
-  adminPassword: string;
 }) {
-  const isICP = "ICP" in vote.voteType;
+  const isICP = "ICP" in (vote.voteType as any);
   const options = getVoteOptions(vote);
   const status = getVoteStatusInfo(vote);
   const open = isVoteOpen(vote);
@@ -1091,8 +1089,6 @@ function VoteCard({
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingResults, setLoadingResults] = useState(true);
-  const [finalizing, setFinalizing] = useState(false);
-
   const loadData = useCallback(async () => {
     if (!actor) return;
     try {
@@ -1155,26 +1151,6 @@ function VoteCard({
       toast.error(`Error: ${e?.message ?? "Unknown error"}`);
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function finalizeVote() {
-    if (!actor) return;
-    setFinalizing(true);
-    try {
-      const ok = await actor.finalizeVote(adminPassword, vote.id);
-      if (ok) {
-        toast.success(
-          "Vote finalized! Auto-distribution will execute if canister is funded.",
-        );
-        await loadData();
-      } else {
-        toast.error("Failed to finalize.");
-      }
-    } catch (e: any) {
-      toast.error(`Error: ${e?.message}`);
-    } finally {
-      setFinalizing(false);
     }
   }
 
@@ -1347,27 +1323,6 @@ function VoteCard({
                 ADMIN ONLY
               </span>
             </div>
-            {!vote.isFinalized && (
-              <div className="space-y-1">
-                <Button
-                  data-ocid="vote.confirm_button"
-                  variant="outline"
-                  size="sm"
-                  onClick={finalizeVote}
-                  disabled={finalizing}
-                  className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 w-full"
-                >
-                  {finalizing ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : null}
-                  Finalize Vote & Create Rewards Pool
-                </Button>
-                <p className="text-xs text-gray-500 text-center">
-                  Auto-distributes if canister is funded. Remainder returns to
-                  treasury.
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -1470,8 +1425,8 @@ function RewardsSection({
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-yellow-300">
-                    {"ICP" in p.voteType ? "$ICP" : "$BITTYICP"} Monthly Vote
-                    Rewards
+                    {"ICP" in (p.voteType as any) ? "$ICP" : "$BITTYICP"}{" "}
+                    Monthly Vote Rewards
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Losing option:{" "}
@@ -1484,7 +1439,7 @@ function RewardsSection({
                     Pool amount:{" "}
                     <span className="text-white font-semibold">
                       {formatE8sAmount(p.poolAmount)}{" "}
-                      {"ICP" in p.voteType ? "ICP" : "BITTYICP"}
+                      {"ICP" in (p.voteType as any) ? "ICP" : "BITTYICP"}
                     </span>
                   </p>
                 </div>
@@ -1614,7 +1569,7 @@ function PublicRewardsBanner({ pools }: { pools: RewardsPoolEntry[] }) {
       </div>
       <div className="space-y-2">
         {pools.map((p) => {
-          const isICP = "ICP" in p.voteType;
+          const isICP = "ICP" in (p.voteType as any);
           const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
           return (
             <div
@@ -1740,7 +1695,7 @@ function MyRewardsPanel({
           {participated.map((vote) => {
             const voteIdStr = vote.id.toString();
             const alloc = myAllocations[voteIdStr];
-            const isICP = "ICP" in vote.voteType;
+            const isICP = "ICP" in (vote.voteType as any);
             const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
             const optionLabels = isICP
               ? [
@@ -2038,7 +1993,6 @@ function CustomProposalCard({
   const [results, setResults] = useState<CustomVoteResult[]>([]);
   const [hasVoted, setHasVoted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [finalizing, setFinalizing] = useState(false);
   const [marking, setMarking] = useState(false);
 
   const now = BigInt(Date.now()) * BigInt(1_000_000);
@@ -2101,27 +2055,6 @@ function CustomProposalCard({
     }
   }
 
-  async function finalizeVote() {
-    if (!actor) return;
-    setFinalizing(true);
-    try {
-      const ok = await (actor as any).finalizeCustomProposal(
-        adminPassword,
-        proposal.id,
-      );
-      if (ok) {
-        toast.success(
-          "Proposal finalized! Auto-distribution will execute if canister is funded.",
-        );
-        onRefresh();
-      } else toast.error("Failed to finalize.");
-    } catch (e: any) {
-      toast.error(`Error: ${e?.message}`);
-    } finally {
-      setFinalizing(false);
-    }
-  }
-
   async function markDistributed() {
     if (!actor) return;
     setMarking(true);
@@ -2155,7 +2088,8 @@ function CustomProposalCard({
     0,
   );
 
-  const voteTypeBadge = "ICP" in proposal.voteType ? "$ICP" : "$BITTYICP";
+  const voteTypeBadge =
+    "ICP" in (proposal.voteType as any) ? "$ICP" : "$BITTYICP";
   const isDistributed = proposal.isFinalized && (proposal as any).distributed;
   const statusColor = isOpen
     ? "border-green-500/60 text-green-400 bg-green-500/10"
@@ -2290,27 +2224,7 @@ function CustomProposalCard({
                 ADMIN ONLY
               </span>
             </div>
-            {(isOpen || isExpired) && (
-              <div className="space-y-1">
-                <Button
-                  data-ocid="proposal.confirm_button"
-                  size="sm"
-                  onClick={finalizeVote}
-                  disabled={finalizing}
-                  variant="outline"
-                  className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-xs w-full"
-                >
-                  {finalizing ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                  ) : null}
-                  Finalize Proposal
-                </Button>
-                <p className="text-xs text-gray-500 text-center">
-                  Auto-distributes if canister is funded. Remainder returns to
-                  treasury.
-                </p>
-              </div>
-            )}
+
             {isFinalized && (
               <Button
                 data-ocid="proposal.secondary_button"
@@ -2743,7 +2657,8 @@ function CustomRewardsBanner({
           );
           const title =
             proposal?.title ?? `Proposal #${String(pool.proposalId)}`;
-          const voteTypeBadge = "ICP" in pool.voteType ? "$ICP" : "$BITTYICP";
+          const voteTypeBadge =
+            "ICP" in (pool.voteType as any) ? "$ICP" : "$BITTYICP";
           return (
             <div key={String(pool.proposalId)} className="space-y-0">
               <div
@@ -2838,7 +2753,7 @@ function PendingDistributionRow({
   onSuccess: () => void;
 }) {
   const [distributing, setDistributing] = useState(false);
-  const isICP = "ICP" in item.voteType;
+  const isICP = "ICP" in (item.voteType as any);
   const tokenLabel = isICP ? "$ICP" : "$BITTYICP";
   const amountHuman = fromE8s(item.amountNeeded);
 
@@ -3098,7 +3013,7 @@ export default function VotingPage({
             for (const v of liveVotes) {
               try {
                 let balanceE8s: bigint | null = null;
-                if ("ICP" in v.voteType) {
+                if ("ICP" in (v.voteType as any)) {
                   balanceE8s = await getICPBalance(TREASURY_WALLET).catch(
                     () => null,
                   );
@@ -3200,8 +3115,8 @@ export default function VotingPage({
   }
 
   // Separate ICP and BITTYICP votes
-  const _bittyVotes = votes.filter((v) => "BITTYICP" in v.voteType);
-  const _icpVotes = votes.filter((v) => "ICP" in v.voteType);
+  const _bittyVotes = votes.filter((v) => "BITTYICP" in (v.voteType as any));
+  const _icpVotes = votes.filter((v) => "ICP" in (v.voteType as any));
 
   const _nowNs = BigInt(Date.now()) * BigInt(1_000_000);
 
@@ -3781,7 +3696,6 @@ export default function VotingPage({
                   votingPower={effectiveVotingPower}
                   actor={activeActor}
                   isAdmin={isAdmin}
-                  adminPassword={adminPassword}
                 />
               ))}
             </div>

@@ -16,118 +16,128 @@ export const Announcement = IDL.Record({
 });
 export const ChatMessage = IDL.Record({
   'id' : IDL.Nat,
+  'voteId' : IDL.Nat,
   'author' : IDL.Text,
   'message' : IDL.Text,
   'timestamp' : IDL.Int,
-  'proposalId' : IDL.Nat,
 });
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
   'guest' : IDL.Null,
 });
-export const Proposal = IDL.Record({
+export const CustomOptionAlloc = IDL.Record({
+  'pct' : IDL.Nat,
+  'optionIndex' : IDL.Nat,
+});
+export const VoteType = IDL.Variant({
+  'ICP' : IDL.Null,
+  'BITTYICP' : IDL.Null,
+});
+export const CustomProposal = IDL.Record({
   'id' : IDL.Nat,
-  'startTime' : IDL.Int,
   'title' : IDL.Text,
-  'endTime' : IDL.Int,
+  'closeTime' : IDL.Int,
+  'voteType' : VoteType,
+  'totalVoteAmount' : IDL.Text,
   'description' : IDL.Text,
-  'isOpen' : IDL.Bool,
+  'isFinalized' : IDL.Bool,
   'options' : IDL.Vec(IDL.Text),
+  'openTime' : IDL.Int,
+});
+export const MonthlyVote = IDL.Record({
+  'id' : IDL.Nat,
+  'month' : IDL.Nat,
+  'closeTime' : IDL.Int,
+  'voteType' : VoteType,
+  'totalVoteAmount' : IDL.Text,
+  'year' : IDL.Nat,
+  'isFinalized' : IDL.Bool,
+  'openTime' : IDL.Int,
+});
+export const RewardTransaction = IDL.Record({
+  'id' : IDL.Nat,
+  'recipient' : IDL.Text,
+  'voteId' : IDL.Nat,
+  'timestamp' : IDL.Int,
+  'tokenType' : VoteType,
+  'amount' : IDL.Nat,
+  'voteTitle' : IDL.Text,
+  'proposalId' : IDL.Nat,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
-export const Vote = IDL.Record({
-  'weight' : IDL.Nat,
-  'optionIndex' : IDL.Nat,
+export const CustomProposalMeta = IDL.Record({
+  'destinationAddress' : IDL.Text,
+  'voteAmount' : IDL.Text,
+  'proposalId' : IDL.Nat,
+});
+export const CustomRewardsPoolEntry = IDL.Record({
+  'distributed' : IDL.Bool,
+  'voteType' : VoteType,
+  'losingOptionPct' : IDL.Nat,
+  'losingOptionLabel' : IDL.Text,
+  'proposalId' : IDL.Nat,
+  'poolAmount' : IDL.Text,
+});
+export const CustomVoteAllocation = IDL.Record({
+  'votingPower' : IDL.Nat,
+  'allocations' : IDL.Vec(CustomOptionAlloc),
   'proposalId' : IDL.Nat,
   'voterPrincipal' : IDL.Text,
 });
-
-export const VoteType = IDL.Variant({ 'ICP': IDL.Null, 'BITTYICP': IDL.Null });
-
-export const MonthlyVote = IDL.Record({
-  'id': IDL.Nat,
-  'voteType': VoteType,
-  'month': IDL.Nat,
-  'year': IDL.Nat,
-  'openTime': IDL.Int,
-  'closeTime': IDL.Int,
-  'isFinalized': IDL.Bool,
-  'totalVoteAmount': IDL.Text,
-});
-
-export const VoteAllocation = IDL.Record({
-  'voteId': IDL.Nat,
-  'voterPrincipal': IDL.Text,
-  'pctA': IDL.Nat,
-  'pctB': IDL.Nat,
-  'pctC': IDL.Nat,
-  'votingPower': IDL.Nat,
-});
-
-export const VoteResult = IDL.Record({
-  'optionLabel': IDL.Text,
-  'totalWeightedPct': IDL.Nat,
-  'voterCount': IDL.Nat,
-});
-
-export const RewardsPoolEntry = IDL.Record({
-  'voteId': IDL.Nat,
-  'voteType': VoteType,
-  'losingOptionLabel': IDL.Text,
-  'losingOptionPct': IDL.Nat,
-  'poolAmount': IDL.Text,
-  'distributed': IDL.Bool,
-});
-
-export const CustomProposal = IDL.Record({
-  'id': IDL.Nat,
-  'title': IDL.Text,
-  'description': IDL.Text,
-  'voteType': VoteType,
-  'options': IDL.Vec(IDL.Text),
-  'openTime': IDL.Int,
-  'closeTime': IDL.Int,
-  'isFinalized': IDL.Bool,
-  'totalVoteAmount': IDL.Text,
-});
-
-export const CustomProposalMeta = IDL.Record({
-  'proposalId': IDL.Nat,
-  'voteAmount': IDL.Text,
-  'destinationAddress': IDL.Text,
-});
-
-export const CustomOptionAlloc = IDL.Record({
-  'optionIndex': IDL.Nat,
-  'pct': IDL.Nat,
-});
-
-export const CustomVoteAllocation = IDL.Record({
-  'proposalId': IDL.Nat,
-  'voterPrincipal': IDL.Text,
-  'allocations': IDL.Vec(CustomOptionAlloc),
-  'votingPower': IDL.Nat,
-});
-
 export const CustomVoteResult = IDL.Record({
-  'optionLabel': IDL.Text,
-  'optionIndex': IDL.Nat,
-  'totalWeightedPct': IDL.Nat,
-  'voterCount': IDL.Nat,
+  'optionLabel' : IDL.Text,
+  'totalWeightedPct' : IDL.Nat,
+  'optionIndex' : IDL.Nat,
+  'voterCount' : IDL.Nat,
 });
-
-export const CustomRewardsPoolEntry = IDL.Record({
-  'proposalId': IDL.Nat,
-  'voteType': VoteType,
-  'losingOptionLabel': IDL.Text,
-  'losingOptionPct': IDL.Nat,
-  'poolAmount': IDL.Text,
-  'distributed': IDL.Bool,
+export const PendingDistribution = IDL.Record({
+  'title' : IDL.Text,
+  'voteType' : VoteType,
+  'voteId' : IDL.Nat,
+  'amountNeeded' : IDL.Text,
+  'isCustom' : IDL.Bool,
+  'proposalId' : IDL.Nat,
 });
-
-export const VerifyOkResult = IDL.Variant({ 'ok': IDL.Nat, 'err': IDL.Text });
-export const ConfirmOkResult = IDL.Variant({ 'ok': IDL.Null, 'err': IDL.Text });
+export const RewardsPoolEntry = IDL.Record({
+  'distributed' : IDL.Bool,
+  'voteType' : VoteType,
+  'voteId' : IDL.Nat,
+  'losingOptionPct' : IDL.Nat,
+  'losingOptionLabel' : IDL.Text,
+  'poolAmount' : IDL.Text,
+});
+export const VoteAllocation = IDL.Record({
+  'votingPower' : IDL.Nat,
+  'pctA' : IDL.Nat,
+  'pctB' : IDL.Nat,
+  'pctC' : IDL.Nat,
+  'voteId' : IDL.Nat,
+  'voterPrincipal' : IDL.Text,
+});
+export const VoteResult = IDL.Record({
+  'optionLabel' : IDL.Text,
+  'totalWeightedPct' : IDL.Nat,
+  'voterCount' : IDL.Nat,
+});
+export const http_header = IDL.Record({
+  'value' : IDL.Text,
+  'name' : IDL.Text,
+});
+export const http_request_result = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
+});
+export const TransformationInput = IDL.Record({
+  'context' : IDL.Vec(IDL.Nat8),
+  'response' : http_request_result,
+});
+export const TransformationOutput = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -142,19 +152,112 @@ export const idlService = IDL.Service({
       [],
     ),
   'adminLogin' : IDL.Func([IDL.Text], [IDL.Bool], []),
+  'adminResetVerifiedWallets' : IDL.Func([IDL.Text], [IDL.Bool], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-  'castVote' : IDL.Func([IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat], [IDL.Bool], []),
-  'closeProposal' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'createProposal' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text)],
-      [IDL.Opt(Proposal)],
+  'autoFinalizeExpired' : IDL.Func([], [], []),
+  'castCustomVote' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat],
+      [IDL.Bool],
+      [],
+    ),
+  'castSplitVote' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
+      [IDL.Bool],
+      [],
+    ),
+  'confirmWalletVerification' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+      [],
+    ),
+  'createCustomProposal' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        VoteType,
+        IDL.Vec(IDL.Text),
+        IDL.Int,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [IDL.Opt(CustomProposal)],
       [],
     ),
   'deleteAnnouncement' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+  'distributeCustomRewards' : IDL.Func(
+      [IDL.Text, IDL.Nat],
+      [
+        IDL.Record({
+          'errors' : IDL.Vec(IDL.Text),
+          'success' : IDL.Bool,
+          'transferCount' : IDL.Nat,
+        }),
+      ],
+      [],
+    ),
+  'distributeRewards' : IDL.Func(
+      [IDL.Text, IDL.Nat],
+      [
+        IDL.Record({
+          'errors' : IDL.Vec(IDL.Text),
+          'success' : IDL.Bool,
+          'transferCount' : IDL.Nat,
+        }),
+      ],
+      [],
+    ),
+  'finalizeCustomProposal' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+  'finalizeVote' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+  'getActiveVotes' : IDL.Func([], [IDL.Vec(MonthlyVote)], []),
+  'getAdminConfig' : IDL.Func(
+      [],
+      [
+        IDL.Record({
+          'gamesWallet' : IDL.Text,
+          'neuronTopupAddress' : IDL.Text,
+        }),
+      ],
+      ['query'],
+    ),
+  'getAllRewardTransactions' : IDL.Func(
+      [IDL.Text],
+      [IDL.Vec(RewardTransaction)],
+      [],
+    ),
+  'getAllVotes' : IDL.Func([], [IDL.Vec(MonthlyVote)], []),
   'getAnnouncements' : IDL.Func([], [IDL.Vec(Announcement)], ['query']),
+  'getBittyUsdPrice' : IDL.Func([], [IDL.Text], []),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getCanisterBalance' : IDL.Func(
+      [],
+      [IDL.Record({ 'icpE8s' : IDL.Nat, 'bittyE8s' : IDL.Nat })],
+      [],
+    ),
   'getChatMessages' : IDL.Func([IDL.Nat], [IDL.Vec(ChatMessage)], ['query']),
+  'getCustomProposalMeta' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Opt(CustomProposalMeta)],
+      ['query'],
+    ),
+  'getCustomProposals' : IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
+  'getCustomRewardsPools' : IDL.Func(
+      [],
+      [IDL.Vec(CustomRewardsPoolEntry)],
+      ['query'],
+    ),
+  'getCustomVoteAllocations' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(CustomVoteAllocation)],
+      ['query'],
+    ),
+  'getCustomVoteResults' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(CustomVoteResult)],
+      ['query'],
+    ),
+  'getIcpUsdPrice' : IDL.Func([], [IDL.Text], []),
   'getManualBalances' : IDL.Func(
       [],
       [
@@ -167,16 +270,62 @@ export const idlService = IDL.Service({
       ],
       ['query'],
     ),
-  'getProposals' : IDL.Func([], [IDL.Vec(Proposal)], ['query']),
+  'getMyRewardTransactions' : IDL.Func(
+      [IDL.Text],
+      [IDL.Vec(RewardTransaction)],
+      ['query'],
+    ),
+  'getMyVerifiedWallets' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+  'getPendingDistributions' : IDL.Func(
+      [],
+      [IDL.Vec(PendingDistribution)],
+      ['query'],
+    ),
+  'getRewardsPools' : IDL.Func([], [IDL.Vec(RewardsPoolEntry)], ['query']),
+  'getTotalRewardsDistributed' : IDL.Func(
+      [],
+      [IDL.Record({ 'totalICP' : IDL.Nat, 'totalBITTY' : IDL.Nat })],
+      ['query'],
+    ),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
-  'getVotesForProposal' : IDL.Func([IDL.Nat], [IDL.Vec(Vote)], ['query']),
-  'hasVoted' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
+  'getVoteAllocations' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(VoteAllocation)],
+      ['query'],
+    ),
+  'getVoteResults' : IDL.Func([IDL.Nat], [IDL.Vec(VoteResult)], ['query']),
+  'getWalletOwner' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+  'hasVotedOnCustomProposal' : IDL.Func(
+      [IDL.Nat, IDL.Text],
+      [IDL.Bool],
+      ['query'],
+    ),
+  'hasVotedOnVote' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
+  'initWalletVerification' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text })],
+      [],
+    ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'isExternalWalletClaimed' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
+  'markCustomRewardsDistributed' : IDL.Func(
+      [IDL.Text, IDL.Nat],
+      [IDL.Bool],
+      [],
+    ),
+  'markRewardsDistributed' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+  'retryPendingDistributions' : IDL.Func([], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'setCustomProposalAmount' : IDL.Func(
+      [IDL.Text, IDL.Nat, IDL.Text],
+      [IDL.Bool],
+      [],
+    ),
+  'setGamesWallet' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
   'setManualBalances' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text],
       [IDL.Bool],
@@ -184,44 +333,29 @@ export const idlService = IDL.Service({
     ),
   'setManualBittyPrice' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
   'setManualFundBalance' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
+  'setNeuronTopupAddress' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
+  'setVoteAmount' : IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
+  'setVoteAmountFromTreasury' : IDL.Func(
+      [IDL.Text, IDL.Nat, IDL.Text],
+      [IDL.Bool],
+      [],
+    ),
+  'transformHttpResponse' : IDL.Func(
+      [TransformationInput],
+      [TransformationOutput],
+      ['query'],
+    ),
+  'unverifyWallet' : IDL.Func([IDL.Text], [IDL.Bool], []),
   'updateAnnouncement' : IDL.Func(
       [IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
       [IDL.Bool],
       [],
     ),
-  'getActiveVotes': IDL.Func([], [IDL.Vec(MonthlyVote)], []),
-  'getAllVotes': IDL.Func([], [IDL.Vec(MonthlyVote)], []),
-  'castSplitVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat], [IDL.Bool], []),
-  'hasVotedOnVote': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
-  'getVoteAllocations': IDL.Func([IDL.Nat], [IDL.Vec(VoteAllocation)], ['query']),
-  'getVoteResults': IDL.Func([IDL.Nat], [IDL.Vec(VoteResult)], ['query']),
-  'setVoteAmount': IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
-  'finalizeVote': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'markRewardsDistributed': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'distributeRewards': IDL.Func([IDL.Text, IDL.Nat], [IDL.Record({'success': IDL.Bool, 'transferCount': IDL.Nat, 'errors': IDL.Vec(IDL.Text)})], []),
-  'getRewardsPools': IDL.Func([], [IDL.Vec(RewardsPoolEntry)], ['query']),
-  'setNeuronTopupAddress': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
-  'setGamesWallet': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
-  'getAdminConfig': IDL.Func([], [IDL.Record({ 'neuronTopupAddress': IDL.Text, 'gamesWallet': IDL.Text })], ['query']),
-  'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int, IDL.Text, IDL.Text], [IDL.Opt(CustomProposal)], []),
-  'getCustomProposalMeta': IDL.Func([IDL.Nat], [IDL.Opt(CustomProposalMeta)], ['query']),
-  'getCustomProposals': IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
-  'castCustomVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat], [IDL.Bool], []),
-  'hasVotedOnCustomProposal': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
-  'getCustomVoteAllocations': IDL.Func([IDL.Nat], [IDL.Vec(CustomVoteAllocation)], ['query']),
-  'getCustomVoteResults': IDL.Func([IDL.Nat], [IDL.Vec(CustomVoteResult)], ['query']),
-  'setCustomProposalAmount': IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
-  'finalizeCustomProposal': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'getCustomRewardsPools': IDL.Func([], [IDL.Vec(CustomRewardsPoolEntry)], ['query']),
-  'markCustomRewardsDistributed': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'distributeCustomRewards': IDL.Func([IDL.Text, IDL.Nat], [IDL.Record({'success': IDL.Bool, 'transferCount': IDL.Nat, 'errors': IDL.Vec(IDL.Text)})], []),
-  'initWalletVerification': IDL.Func([IDL.Text], [VerifyOkResult], []),
-  'confirmWalletVerification': IDL.Func([IDL.Text], [ConfirmOkResult], []),
-  'getMyVerifiedWallets': IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
-  'isExternalWalletClaimed': IDL.Func([IDL.Text], [IDL.Bool], ['query']),
-  'getWalletOwner': IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
-    'verifyExternalWallet': IDL.Func([IDL.Text], [IDL.Variant({'ok': IDL.Null, 'err': IDL.Text})], []),
-    'unverifyWallet': IDL.Func([IDL.Text], [IDL.Bool], []),
+  'verifyExternalWallet' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+      [],
+    ),
 });
 
 export const idlInitArgs = [];
@@ -235,107 +369,123 @@ export const idlFactory = ({ IDL }) => {
   });
   const ChatMessage = IDL.Record({
     'id' : IDL.Nat,
+    'voteId' : IDL.Nat,
     'author' : IDL.Text,
     'message' : IDL.Text,
     'timestamp' : IDL.Int,
-    'proposalId' : IDL.Nat,
   });
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
     'guest' : IDL.Null,
   });
-  const Proposal = IDL.Record({
+  const CustomOptionAlloc = IDL.Record({
+    'pct' : IDL.Nat,
+    'optionIndex' : IDL.Nat,
+  });
+  const VoteType = IDL.Variant({ 'ICP' : IDL.Null, 'BITTYICP' : IDL.Null });
+  const CustomProposal = IDL.Record({
     'id' : IDL.Nat,
-    'startTime' : IDL.Int,
     'title' : IDL.Text,
-    'endTime' : IDL.Int,
+    'closeTime' : IDL.Int,
+    'voteType' : VoteType,
+    'totalVoteAmount' : IDL.Text,
     'description' : IDL.Text,
-    'isOpen' : IDL.Bool,
+    'isFinalized' : IDL.Bool,
     'options' : IDL.Vec(IDL.Text),
+    'openTime' : IDL.Int,
+  });
+  const MonthlyVote = IDL.Record({
+    'id' : IDL.Nat,
+    'month' : IDL.Nat,
+    'closeTime' : IDL.Int,
+    'voteType' : VoteType,
+    'totalVoteAmount' : IDL.Text,
+    'year' : IDL.Nat,
+    'isFinalized' : IDL.Bool,
+    'openTime' : IDL.Int,
+  });
+  const RewardTransaction = IDL.Record({
+    'id' : IDL.Nat,
+    'recipient' : IDL.Text,
+    'voteId' : IDL.Nat,
+    'timestamp' : IDL.Int,
+    'tokenType' : VoteType,
+    'amount' : IDL.Nat,
+    'voteTitle' : IDL.Text,
+    'proposalId' : IDL.Nat,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
-  const Vote = IDL.Record({
-    'weight' : IDL.Nat,
-    'optionIndex' : IDL.Nat,
+  const CustomProposalMeta = IDL.Record({
+    'destinationAddress' : IDL.Text,
+    'voteAmount' : IDL.Text,
+    'proposalId' : IDL.Nat,
+  });
+  const CustomRewardsPoolEntry = IDL.Record({
+    'distributed' : IDL.Bool,
+    'voteType' : VoteType,
+    'losingOptionPct' : IDL.Nat,
+    'losingOptionLabel' : IDL.Text,
+    'proposalId' : IDL.Nat,
+    'poolAmount' : IDL.Text,
+  });
+  const CustomVoteAllocation = IDL.Record({
+    'votingPower' : IDL.Nat,
+    'allocations' : IDL.Vec(CustomOptionAlloc),
     'proposalId' : IDL.Nat,
     'voterPrincipal' : IDL.Text,
   });
-  const VoteType = IDL.Variant({ 'ICP': IDL.Null, 'BITTYICP': IDL.Null });
-  const MonthlyVote = IDL.Record({
-    'id': IDL.Nat,
-    'voteType': VoteType,
-    'month': IDL.Nat,
-    'year': IDL.Nat,
-    'openTime': IDL.Int,
-    'closeTime': IDL.Int,
-    'isFinalized': IDL.Bool,
-    'totalVoteAmount': IDL.Text,
+  const CustomVoteResult = IDL.Record({
+    'optionLabel' : IDL.Text,
+    'totalWeightedPct' : IDL.Nat,
+    'optionIndex' : IDL.Nat,
+    'voterCount' : IDL.Nat,
   });
-  const VoteAllocation = IDL.Record({
-    'voteId': IDL.Nat,
-    'voterPrincipal': IDL.Text,
-    'pctA': IDL.Nat,
-    'pctB': IDL.Nat,
-    'pctC': IDL.Nat,
-    'votingPower': IDL.Nat,
-  });
-  const VoteResult = IDL.Record({
-    'optionLabel': IDL.Text,
-    'totalWeightedPct': IDL.Nat,
-    'voterCount': IDL.Nat,
+  const PendingDistribution = IDL.Record({
+    'title' : IDL.Text,
+    'voteType' : VoteType,
+    'voteId' : IDL.Nat,
+    'amountNeeded' : IDL.Text,
+    'isCustom' : IDL.Bool,
+    'proposalId' : IDL.Nat,
   });
   const RewardsPoolEntry = IDL.Record({
-    'voteId': IDL.Nat,
-    'voteType': VoteType,
-    'losingOptionLabel': IDL.Text,
-    'losingOptionPct': IDL.Nat,
-    'poolAmount': IDL.Text,
-    'distributed': IDL.Bool,
+    'distributed' : IDL.Bool,
+    'voteType' : VoteType,
+    'voteId' : IDL.Nat,
+    'losingOptionPct' : IDL.Nat,
+    'losingOptionLabel' : IDL.Text,
+    'poolAmount' : IDL.Text,
   });
-  const CustomProposal = IDL.Record({
-    'id': IDL.Nat,
-    'title': IDL.Text,
-    'description': IDL.Text,
-    'voteType': VoteType,
-    'options': IDL.Vec(IDL.Text),
-    'openTime': IDL.Int,
-    'closeTime': IDL.Int,
-    'isFinalized': IDL.Bool,
-    'totalVoteAmount': IDL.Text,
+  const VoteAllocation = IDL.Record({
+    'votingPower' : IDL.Nat,
+    'pctA' : IDL.Nat,
+    'pctB' : IDL.Nat,
+    'pctC' : IDL.Nat,
+    'voteId' : IDL.Nat,
+    'voterPrincipal' : IDL.Text,
   });
-  const CustomProposalMeta = IDL.Record({
-    'proposalId': IDL.Nat,
-    'voteAmount': IDL.Text,
-    'destinationAddress': IDL.Text,
+  const VoteResult = IDL.Record({
+    'optionLabel' : IDL.Text,
+    'totalWeightedPct' : IDL.Nat,
+    'voterCount' : IDL.Nat,
   });
-  const CustomOptionAlloc = IDL.Record({
-    'optionIndex': IDL.Nat,
-    'pct': IDL.Nat,
+  const http_header = IDL.Record({ 'value' : IDL.Text, 'name' : IDL.Text });
+  const http_request_result = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
   });
-  const CustomVoteAllocation = IDL.Record({
-    'proposalId': IDL.Nat,
-    'voterPrincipal': IDL.Text,
-    'allocations': IDL.Vec(CustomOptionAlloc),
-    'votingPower': IDL.Nat,
+  const TransformationInput = IDL.Record({
+    'context' : IDL.Vec(IDL.Nat8),
+    'response' : http_request_result,
   });
-  const CustomVoteResult = IDL.Record({
-    'optionLabel': IDL.Text,
-    'optionIndex': IDL.Nat,
-    'totalWeightedPct': IDL.Nat,
-    'voterCount': IDL.Nat,
+  const TransformationOutput = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
   });
-  const CustomRewardsPoolEntry = IDL.Record({
-    'proposalId': IDL.Nat,
-    'voteType': VoteType,
-    'losingOptionLabel': IDL.Text,
-    'losingOptionPct': IDL.Nat,
-    'poolAmount': IDL.Text,
-    'distributed': IDL.Bool,
-  });
-  const VerifyOkResult = IDL.Variant({ 'ok': IDL.Nat, 'err': IDL.Text });
-  const ConfirmOkResult = IDL.Variant({ 'ok': IDL.Null, 'err': IDL.Text });
-
+  
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addAnnouncement' : IDL.Func(
@@ -349,23 +499,112 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'adminLogin' : IDL.Func([IDL.Text], [IDL.Bool], []),
+    'adminResetVerifiedWallets' : IDL.Func([IDL.Text], [IDL.Bool], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
-    'castVote' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat],
+    'autoFinalizeExpired' : IDL.Func([], [], []),
+    'castCustomVote' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat],
         [IDL.Bool],
         [],
       ),
-    'closeProposal' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-    'createProposal' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text)],
-        [IDL.Opt(Proposal)],
+    'castSplitVote' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat],
+        [IDL.Bool],
+        [],
+      ),
+    'confirmWalletVerification' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
+    'createCustomProposal' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          VoteType,
+          IDL.Vec(IDL.Text),
+          IDL.Int,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [IDL.Opt(CustomProposal)],
         [],
       ),
     'deleteAnnouncement' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+    'distributeCustomRewards' : IDL.Func(
+        [IDL.Text, IDL.Nat],
+        [
+          IDL.Record({
+            'errors' : IDL.Vec(IDL.Text),
+            'success' : IDL.Bool,
+            'transferCount' : IDL.Nat,
+          }),
+        ],
+        [],
+      ),
+    'distributeRewards' : IDL.Func(
+        [IDL.Text, IDL.Nat],
+        [
+          IDL.Record({
+            'errors' : IDL.Vec(IDL.Text),
+            'success' : IDL.Bool,
+            'transferCount' : IDL.Nat,
+          }),
+        ],
+        [],
+      ),
+    'finalizeCustomProposal' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+    'finalizeVote' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+    'getActiveVotes' : IDL.Func([], [IDL.Vec(MonthlyVote)], []),
+    'getAdminConfig' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'gamesWallet' : IDL.Text,
+            'neuronTopupAddress' : IDL.Text,
+          }),
+        ],
+        ['query'],
+      ),
+    'getAllRewardTransactions' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(RewardTransaction)],
+        [],
+      ),
+    'getAllVotes' : IDL.Func([], [IDL.Vec(MonthlyVote)], []),
     'getAnnouncements' : IDL.Func([], [IDL.Vec(Announcement)], ['query']),
+    'getBittyUsdPrice' : IDL.Func([], [IDL.Text], []),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getCanisterBalance' : IDL.Func(
+        [],
+        [IDL.Record({ 'icpE8s' : IDL.Nat, 'bittyE8s' : IDL.Nat })],
+        [],
+      ),
     'getChatMessages' : IDL.Func([IDL.Nat], [IDL.Vec(ChatMessage)], ['query']),
+    'getCustomProposalMeta' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(CustomProposalMeta)],
+        ['query'],
+      ),
+    'getCustomProposals' : IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
+    'getCustomRewardsPools' : IDL.Func(
+        [],
+        [IDL.Vec(CustomRewardsPoolEntry)],
+        ['query'],
+      ),
+    'getCustomVoteAllocations' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(CustomVoteAllocation)],
+        ['query'],
+      ),
+    'getCustomVoteResults' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(CustomVoteResult)],
+        ['query'],
+      ),
+    'getIcpUsdPrice' : IDL.Func([], [IDL.Text], []),
     'getManualBalances' : IDL.Func(
         [],
         [
@@ -378,16 +617,62 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
-    'getProposals' : IDL.Func([], [IDL.Vec(Proposal)], ['query']),
+    'getMyRewardTransactions' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(RewardTransaction)],
+        ['query'],
+      ),
+    'getMyVerifiedWallets' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+    'getPendingDistributions' : IDL.Func(
+        [],
+        [IDL.Vec(PendingDistribution)],
+        ['query'],
+      ),
+    'getRewardsPools' : IDL.Func([], [IDL.Vec(RewardsPoolEntry)], ['query']),
+    'getTotalRewardsDistributed' : IDL.Func(
+        [],
+        [IDL.Record({ 'totalICP' : IDL.Nat, 'totalBITTY' : IDL.Nat })],
+        ['query'],
+      ),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
-    'getVotesForProposal' : IDL.Func([IDL.Nat], [IDL.Vec(Vote)], ['query']),
-    'hasVoted' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
+    'getVoteAllocations' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(VoteAllocation)],
+        ['query'],
+      ),
+    'getVoteResults' : IDL.Func([IDL.Nat], [IDL.Vec(VoteResult)], ['query']),
+    'getWalletOwner' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+    'hasVotedOnCustomProposal' : IDL.Func(
+        [IDL.Nat, IDL.Text],
+        [IDL.Bool],
+        ['query'],
+      ),
+    'hasVotedOnVote' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
+    'initWalletVerification' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text })],
+        [],
+      ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'isExternalWalletClaimed' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
+    'markCustomRewardsDistributed' : IDL.Func(
+        [IDL.Text, IDL.Nat],
+        [IDL.Bool],
+        [],
+      ),
+    'markRewardsDistributed' : IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
+    'retryPendingDistributions' : IDL.Func([], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'setCustomProposalAmount' : IDL.Func(
+        [IDL.Text, IDL.Nat, IDL.Text],
+        [IDL.Bool],
+        [],
+      ),
+    'setGamesWallet' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
     'setManualBalances' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text],
         [IDL.Bool],
@@ -395,44 +680,29 @@ export const idlFactory = ({ IDL }) => {
       ),
     'setManualBittyPrice' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
     'setManualFundBalance' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
+    'setNeuronTopupAddress' : IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
+    'setVoteAmount' : IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
+    'setVoteAmountFromTreasury' : IDL.Func(
+        [IDL.Text, IDL.Nat, IDL.Text],
+        [IDL.Bool],
+        [],
+      ),
+    'transformHttpResponse' : IDL.Func(
+        [TransformationInput],
+        [TransformationOutput],
+        ['query'],
+      ),
+    'unverifyWallet' : IDL.Func([IDL.Text], [IDL.Bool], []),
     'updateAnnouncement' : IDL.Func(
         [IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
         [IDL.Bool],
         [],
       ),
-    'getActiveVotes': IDL.Func([], [IDL.Vec(MonthlyVote)], []),
-    'getAllVotes': IDL.Func([], [IDL.Vec(MonthlyVote)], []),
-    'castSplitVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Nat], [IDL.Bool], []),
-    'hasVotedOnVote': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
-    'getVoteAllocations': IDL.Func([IDL.Nat], [IDL.Vec(VoteAllocation)], ['query']),
-    'getVoteResults': IDL.Func([IDL.Nat], [IDL.Vec(VoteResult)], ['query']),
-    'setVoteAmount': IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
-    'finalizeVote': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-    'markRewardsDistributed': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'distributeRewards': IDL.Func([IDL.Text, IDL.Nat], [IDL.Record({'success': IDL.Bool, 'transferCount': IDL.Nat, 'errors': IDL.Vec(IDL.Text)})], []),
-    'getRewardsPools': IDL.Func([], [IDL.Vec(RewardsPoolEntry)], ['query']),
-    'setNeuronTopupAddress': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
-    'setGamesWallet': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
-    'getAdminConfig': IDL.Func([], [IDL.Record({ 'neuronTopupAddress': IDL.Text, 'gamesWallet': IDL.Text })], ['query']),
-    'createCustomProposal': IDL.Func([IDL.Text, IDL.Text, IDL.Text, VoteType, IDL.Vec(IDL.Text), IDL.Int, IDL.Text, IDL.Text], [IDL.Opt(CustomProposal)], []),
-    'getCustomProposalMeta': IDL.Func([IDL.Nat], [IDL.Opt(CustomProposalMeta)], ['query']),
-    'getCustomProposals': IDL.Func([], [IDL.Vec(CustomProposal)], ['query']),
-    'castCustomVote': IDL.Func([IDL.Nat, IDL.Text, IDL.Vec(CustomOptionAlloc), IDL.Nat], [IDL.Bool], []),
-    'hasVotedOnCustomProposal': IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], ['query']),
-    'getCustomVoteAllocations': IDL.Func([IDL.Nat], [IDL.Vec(CustomVoteAllocation)], ['query']),
-    'getCustomVoteResults': IDL.Func([IDL.Nat], [IDL.Vec(CustomVoteResult)], ['query']),
-    'setCustomProposalAmount': IDL.Func([IDL.Text, IDL.Nat, IDL.Text], [IDL.Bool], []),
-    'finalizeCustomProposal': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-    'getCustomRewardsPools': IDL.Func([], [IDL.Vec(CustomRewardsPoolEntry)], ['query']),
-    'markCustomRewardsDistributed': IDL.Func([IDL.Text, IDL.Nat], [IDL.Bool], []),
-  'distributeCustomRewards': IDL.Func([IDL.Text, IDL.Nat], [IDL.Record({'success': IDL.Bool, 'transferCount': IDL.Nat, 'errors': IDL.Vec(IDL.Text)})], []),
-    'initWalletVerification': IDL.Func([IDL.Text], [VerifyOkResult], []),
-    'confirmWalletVerification': IDL.Func([IDL.Text], [ConfirmOkResult], []),
-    'getMyVerifiedWallets': IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
-    'isExternalWalletClaimed': IDL.Func([IDL.Text], [IDL.Bool], ['query']),
-    'getWalletOwner': IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
-    'verifyExternalWallet': IDL.Func([IDL.Text], [IDL.Variant({'ok': IDL.Null, 'err': IDL.Text})], []),
-    'unverifyWallet': IDL.Func([IDL.Text], [IDL.Bool], []),
+    'verifyExternalWallet' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
   });
 };
 

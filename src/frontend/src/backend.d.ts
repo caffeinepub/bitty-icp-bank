@@ -1,204 +1,245 @@
-import { ActorSubclass } from '@dfinity/agent';
-
-export interface Announcement {
-  id: bigint;
-  title: string;
-  body: string;
-  timestamp: bigint;
+import type { Principal } from "@icp-sdk/core/principal";
+export interface Some<T> {
+    __kind__: "Some";
+    value: T;
 }
-
-export interface ManualBalances {
-  icp: string;
-  bitty: string;
-  fund: string;
-  bittyPriceUsd: string;
+export interface None {
+    __kind__: "None";
 }
-
-export type VoteType = { ICP: null } | { BITTYICP: null };
-
-export interface MonthlyVote {
-  id: bigint;
-  voteType: VoteType;
-  month: bigint;
-  year: bigint;
-  openTime: bigint;
-  closeTime: bigint;
-  isFinalized: boolean;
-  totalVoteAmount: string;
-}
-
-export interface VoteAllocation {
-  voteId: bigint;
-  voterPrincipal: string;
-  pctA: bigint;
-  pctB: bigint;
-  pctC: bigint;
-  votingPower: bigint;
-}
-
-export interface VoteResult {
-  optionLabel: string;
-  totalWeightedPct: bigint;
-  voterCount: bigint;
-}
-
-export interface RewardsPoolEntry {
-  voteId: bigint;
-  voteType: VoteType;
-  losingOptionLabel: string;
-  losingOptionPct: bigint;
-  poolAmount: string;
-  distributed: boolean;
-}
-
-export interface ChatMessage {
-  id: bigint;
-  voteId: bigint;
-  author: string;
-  message: string;
-  timestamp: bigint;
-}
-
-export interface CustomProposal {
-  id: bigint;
-  title: string;
-  description: string;
-  voteType: VoteType;
-  options: string[];
-  openTime: bigint;
-  closeTime: bigint;
-  isFinalized: boolean;
-  totalVoteAmount: string;
-}
-
-export interface CustomOptionAlloc {
-  optionIndex: bigint;
-  pct: bigint;
-}
-
+export type Option<T> = Some<T> | None;
 export interface CustomVoteAllocation {
-  proposalId: bigint;
-  voterPrincipal: string;
-  allocations: CustomOptionAlloc[];
-  votingPower: bigint;
+    votingPower: bigint;
+    allocations: Array<CustomOptionAlloc>;
+    proposalId: bigint;
+    voterPrincipal: string;
 }
-
 export interface CustomVoteResult {
-  optionLabel: string;
-  optionIndex: bigint;
-  totalWeightedPct: bigint;
-  voterCount: bigint;
+    optionLabel: string;
+    totalWeightedPct: bigint;
+    optionIndex: bigint;
+    voterCount: bigint;
 }
-
+export interface CustomOptionAlloc {
+    pct: bigint;
+    optionIndex: bigint;
+}
+export interface TransformationOutput {
+    status: bigint;
+    body: Uint8Array;
+    headers: Array<http_header>;
+}
 export interface CustomRewardsPoolEntry {
-  proposalId: bigint;
-  voteType: VoteType;
-  losingOptionLabel: string;
-  losingOptionPct: bigint;
-  poolAmount: string;
-  distributed: boolean;
+    distributed: boolean;
+    voteType: VoteType;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    proposalId: bigint;
+    poolAmount: string;
 }
-
-export interface AdminConfig {
-  neuronTopupAddress: string;
-  gamesWallet: string;
+export interface VoteResult {
+    optionLabel: string;
+    totalWeightedPct: bigint;
+    voterCount: bigint;
 }
-
+export interface RewardsPoolEntry {
+    distributed: boolean;
+    voteType: VoteType;
+    voteId: bigint;
+    losingOptionPct: bigint;
+    losingOptionLabel: string;
+    poolAmount: string;
+}
+export interface MonthlyVote {
+    id: bigint;
+    month: bigint;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
+    year: bigint;
+    isFinalized: boolean;
+    openTime: bigint;
+}
+export interface http_header {
+    value: string;
+    name: string;
+}
+export interface http_request_result {
+    status: bigint;
+    body: Uint8Array;
+    headers: Array<http_header>;
+}
+export interface VoteAllocation {
+    votingPower: bigint;
+    pctA: bigint;
+    pctB: bigint;
+    pctC: bigint;
+    voteId: bigint;
+    voterPrincipal: string;
+}
 export interface RewardTransaction {
-  id: bigint;
-  recipient: string;
-  amount: bigint;
-  tokenType: VoteType;
-  timestamp: bigint;
-  voteTitle: string;
-  voteId: bigint;
-  proposalId: bigint;
+    id: bigint;
+    recipient: string;
+    voteId: bigint;
+    timestamp: bigint;
+    tokenType: VoteType;
+    amount: bigint;
+    voteTitle: string;
+    proposalId: bigint;
 }
-
-export interface DistributeResult {
-  success: boolean;
-  transferCount: bigint;
-  errors: string[];
+export interface TransformationInput {
+    context: Uint8Array;
+    response: http_request_result;
 }
-
-export interface CanisterBalance {
-  icpE8s: bigint;
-  bittyE8s: bigint;
+export interface Announcement {
+    id: bigint;
+    title: string;
+    body: string;
+    timestamp: bigint;
 }
-
+export interface ChatMessage {
+    id: bigint;
+    voteId: bigint;
+    author: string;
+    message: string;
+    timestamp: bigint;
+}
+export interface CustomProposalMeta {
+    destinationAddress: string;
+    voteAmount: string;
+    proposalId: bigint;
+}
+export interface CustomProposal {
+    id: bigint;
+    title: string;
+    closeTime: bigint;
+    voteType: VoteType;
+    totalVoteAmount: string;
+    description: string;
+    isFinalized: boolean;
+    options: Array<string>;
+    openTime: bigint;
+}
 export interface PendingDistribution {
-  isCustom: boolean;
-  voteId: bigint;
-  proposalId: bigint;
-  voteType: VoteType;
-  amountNeeded: string;
-  title: string;
+    title: string;
+    voteType: VoteType;
+    voteId: bigint;
+    amountNeeded: string;
+    isCustom: boolean;
+    proposalId: bigint;
 }
-
-export interface TotalRewardsDistributed {
-  totalICP: bigint;
-  totalBITTY: bigint;
+export interface UserProfile {
+    name: string;
 }
-
-export interface _SERVICE {
-  adminLogin: (password: string) => Promise<boolean>;
-  getManualBalances: () => Promise<ManualBalances>;
-  setManualBalances: (password: string, icp: string, bitty: string) => Promise<boolean>;
-  setManualFundBalance: (password: string, fund: string) => Promise<boolean>;
-  setManualBittyPrice: (password: string, price: string) => Promise<boolean>;
-  getAnnouncements: () => Promise<Announcement[]>;
-  addAnnouncement: (password: string, title: string, body: string) => Promise<[] | [Announcement]>;
-  updateAnnouncement: (password: string, id: bigint, title: string, body: string) => Promise<boolean>;
-  deleteAnnouncement: (password: string, id: bigint) => Promise<boolean>;
-  // Monthly votes
-  getActiveVotes: () => Promise<MonthlyVote[]>;
-  getAllVotes: () => Promise<MonthlyVote[]>;
-  castSplitVote: (voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint) => Promise<boolean>;
-  hasVotedOnVote: (voteId: bigint, voterPrincipal: string) => Promise<boolean>;
-  getVoteAllocations: (voteId: bigint) => Promise<VoteAllocation[]>;
-  getVoteResults: (voteId: bigint) => Promise<VoteResult[]>;
-  setVoteAmount: (password: string, voteId: bigint, amount: string) => Promise<boolean>;
-  setVoteAmountFromTreasury: (password: string, voteId: bigint, amount: string) => Promise<boolean>;
-  finalizeVote: (password: string, voteId: bigint) => Promise<boolean>;
-  markRewardsDistributed: (password: string, voteId: bigint) => Promise<boolean>;
-  distributeRewards: (password: string, voteId: bigint) => Promise<DistributeResult>;
-  getRewardsPools: () => Promise<RewardsPoolEntry[]>;
-  setNeuronTopupAddress: (password: string, addr: string) => Promise<boolean>;
-  setGamesWallet: (password: string, addr: string) => Promise<boolean>;
-  getAdminConfig: () => Promise<AdminConfig>;
-  // Canister balance
-  getCanisterBalance: () => Promise<CanisterBalance>;
-  // Pending distributions
-  getPendingDistributions: () => Promise<PendingDistribution[]>;
-  // Custom proposals
-  createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string) => Promise<[] | [CustomProposal]>;
-  getCustomProposals: () => Promise<CustomProposal[]>;
-  castCustomVote: (proposalId: bigint, voterPrincipal: string, allocations: CustomOptionAlloc[], votingPower: bigint) => Promise<boolean>;
-  hasVotedOnCustomProposal: (proposalId: bigint, voterPrincipal: string) => Promise<boolean>;
-  getCustomVoteAllocations: (proposalId: bigint) => Promise<CustomVoteAllocation[]>;
-  getCustomVoteResults: (proposalId: bigint) => Promise<CustomVoteResult[]>;
-  setCustomProposalAmount: (password: string, proposalId: bigint, amount: string) => Promise<boolean>;
-  finalizeCustomProposal: (password: string, proposalId: bigint) => Promise<boolean>;
-  getCustomRewardsPools: () => Promise<CustomRewardsPoolEntry[]>;
-  markCustomRewardsDistributed: (password: string, proposalId: bigint) => Promise<boolean>;
-  distributeCustomRewards: (password: string, proposalId: bigint) => Promise<DistributeResult>;
-  // Reward transaction history
-  getMyRewardTransactions: (principal: string) => Promise<RewardTransaction[]>;
-  getAllRewardTransactions: (password: string) => Promise<RewardTransaction[]>;
-  getTotalRewardsDistributed: () => Promise<TotalRewardsDistributed>;
-  // Chat
-  addChatMessage: (voteId: bigint, author: string, message: string) => Promise<[] | [ChatMessage]>;
-  getChatMessages: (voteId: bigint) => Promise<ChatMessage[]>;
-  // Wallet verification
-  initWalletVerification: (externalWallet: string) => Promise<{ ok: bigint } | { err: string }>;
-  confirmWalletVerification: (externalWallet: string) => Promise<{ ok: null } | { err: string }>;
-  getMyVerifiedWallets: () => Promise<string[]>;
-  isExternalWalletClaimed: (wallet: string) => Promise<boolean>;
-  getWalletOwner: (wallet: string) => Promise<[] | [string]>;
-  verifyExternalWallet: (externalWallet: string) => Promise<{ ok: null } | { err: string }>;
-  adminResetVerifiedWallets: (password: string) => Promise<boolean>;
-  unverifyWallet: (externalWallet: string) => Promise<boolean>;
+export enum UserRole {
+    admin = "admin",
+    user = "user",
+    guest = "guest"
 }
-
-export declare const createActor: (canisterId: string) => ActorSubclass<_SERVICE>;
-export declare const canisterId: string;
+export enum VoteType {
+    ICP = "ICP",
+    BITTYICP = "BITTYICP"
+}
+export interface backendInterface {
+    addAnnouncement(password: string, title: string, body: string): Promise<Announcement | null>;
+    addChatMessage(voteId: bigint, author: string, message: string): Promise<ChatMessage | null>;
+    adminLogin(password: string): Promise<boolean>;
+    adminResetVerifiedWallets(password: string): Promise<boolean>;
+    assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    autoFinalizeExpired(): Promise<void>;
+    castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: Array<CustomOptionAlloc>, votingPower: bigint): Promise<boolean>;
+    castSplitVote(voteId: bigint, voterPrincipal: string, pctA: bigint, pctB: bigint, pctC: bigint, votingPower: bigint): Promise<boolean>;
+    confirmWalletVerification(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    createCustomProposal(password: string, title: string, description: string, voteType: VoteType, options: Array<string>, closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<CustomProposal | null>;
+    deleteAnnouncement(password: string, id: bigint): Promise<boolean>;
+    distributeCustomRewards(password: string, proposalId: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }>;
+    distributeRewards(password: string, voteId: bigint): Promise<{
+        errors: Array<string>;
+        success: boolean;
+        transferCount: bigint;
+    }>;
+    finalizeCustomProposal(password: string, proposalId: bigint): Promise<boolean>;
+    finalizeVote(password: string, voteId: bigint): Promise<boolean>;
+    getActiveVotes(): Promise<Array<MonthlyVote>>;
+    getAdminConfig(): Promise<{
+        gamesWallet: string;
+        neuronTopupAddress: string;
+    }>;
+    getAllRewardTransactions(password: string): Promise<Array<RewardTransaction>>;
+    getAllVotes(): Promise<Array<MonthlyVote>>;
+    getAnnouncements(): Promise<Array<Announcement>>;
+    getBittyUsdPrice(): Promise<string>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
+    getCallerUserRole(): Promise<UserRole>;
+    getCanisterBalance(): Promise<{
+        icpE8s: bigint;
+        bittyE8s: bigint;
+    }>;
+    getChatMessages(voteId: bigint): Promise<Array<ChatMessage>>;
+    getCustomProposalMeta(proposalId: bigint): Promise<CustomProposalMeta | null>;
+    getCustomProposals(): Promise<Array<CustomProposal>>;
+    getCustomRewardsPools(): Promise<Array<CustomRewardsPoolEntry>>;
+    getCustomVoteAllocations(proposalId: bigint): Promise<Array<CustomVoteAllocation>>;
+    getCustomVoteResults(proposalId: bigint): Promise<Array<CustomVoteResult>>;
+    getIcpUsdPrice(): Promise<string>;
+    getManualBalances(): Promise<{
+        icp: string;
+        fund: string;
+        bittyPriceUsd: string;
+        bitty: string;
+    }>;
+    getMyRewardTransactions(principal: string): Promise<Array<RewardTransaction>>;
+    getMyVerifiedWallets(): Promise<Array<string>>;
+    getPendingDistributions(): Promise<Array<PendingDistribution>>;
+    getRewardsPools(): Promise<Array<RewardsPoolEntry>>;
+    getTotalRewardsDistributed(): Promise<{
+        totalICP: bigint;
+        totalBITTY: bigint;
+    }>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
+    getVoteAllocations(voteId: bigint): Promise<Array<VoteAllocation>>;
+    getVoteResults(voteId: bigint): Promise<Array<VoteResult>>;
+    getWalletOwner(wallet: string): Promise<string | null>;
+    hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
+    hasVotedOnVote(voteId: bigint, voterPrincipal: string): Promise<boolean>;
+    initWalletVerification(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: bigint;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    isCallerAdmin(): Promise<boolean>;
+    isExternalWalletClaimed(wallet: string): Promise<boolean>;
+    markCustomRewardsDistributed(password: string, proposalId: bigint): Promise<boolean>;
+    markRewardsDistributed(password: string, voteId: bigint): Promise<boolean>;
+    retryPendingDistributions(): Promise<void>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    setCustomProposalAmount(password: string, proposalId: bigint, amount: string): Promise<boolean>;
+    setGamesWallet(password: string, addr: string): Promise<boolean>;
+    setManualBalances(password: string, icp: string, bitty: string): Promise<boolean>;
+    setManualBittyPrice(password: string, price: string): Promise<boolean>;
+    setManualFundBalance(password: string, fund: string): Promise<boolean>;
+    setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
+    setVoteAmount(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    setVoteAmountFromTreasury(password: string, voteId: bigint, amount: string): Promise<boolean>;
+    transformHttpResponse(input: TransformationInput): Promise<TransformationOutput>;
+    unverifyWallet(externalWallet: string): Promise<boolean>;
+    updateAnnouncement(password: string, id: bigint, title: string, body: string): Promise<boolean>;
+    verifyExternalWallet(externalWallet: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+}
