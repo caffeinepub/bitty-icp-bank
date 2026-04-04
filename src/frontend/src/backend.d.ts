@@ -171,7 +171,7 @@ export interface _SERVICE {
   // Pending distributions
   getPendingDistributions: () => Promise<PendingDistribution[]>;
   // Custom proposals
-  createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint) => Promise<[] | [CustomProposal]>;
+  createCustomProposal: (password: string, title: string, description: string, voteType: VoteType, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string) => Promise<[] | [CustomProposal]>;
   getCustomProposals: () => Promise<CustomProposal[]>;
   castCustomVote: (proposalId: bigint, voterPrincipal: string, allocations: CustomOptionAlloc[], votingPower: bigint) => Promise<boolean>;
   hasVotedOnCustomProposal: (proposalId: bigint, voterPrincipal: string) => Promise<boolean>;

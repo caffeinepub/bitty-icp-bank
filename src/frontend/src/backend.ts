@@ -170,7 +170,7 @@ export interface backendInterface {
     setNeuronTopupAddress(password: string, addr: string): Promise<boolean>;
     setGamesWallet(password: string, addr: string): Promise<boolean>;
     getAdminConfig(): Promise<{ neuronTopupAddress: string; gamesWallet: string }>;
-    createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint): Promise<any | null>;
+    createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<any | null>;
     getCustomProposals(): Promise<any[]>;
     castCustomVote(proposalId: bigint, voterPrincipal: string, allocations: any[], votingPower: bigint): Promise<boolean>;
     hasVotedOnCustomProposal(proposalId: bigint, voterPrincipal: string): Promise<boolean>;
@@ -592,8 +592,8 @@ export class Backend implements backendInterface {
         const result = await this.actor.getAdminConfig();
         return result;
     }
-    async createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint): Promise<any | null> {
-        const result = await this.actor.createCustomProposal(password, title, description, voteType, options, closeTimeNs);
+    async createCustomProposal(password: string, title: string, description: string, voteType: any, options: string[], closeTimeNs: bigint, voteAmount: string, destinationAddress: string): Promise<any | null> {
+        const result = await this.actor.createCustomProposal(password, title, description, voteType, options, closeTimeNs, voteAmount, destinationAddress);
         return result.length === 0 ? null : result[0];
     }
     async getCustomProposals(): Promise<any[]> {
