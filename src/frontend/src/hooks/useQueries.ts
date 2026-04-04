@@ -475,9 +475,53 @@ export function useGetTotalRewardsDistributed() {
     queryFn: async () => {
       if (!actor) return { totalICP: 0n, totalBITTY: 0n };
       const a = actor as any;
-      if (!a.getTotalRewardsDistributed)
-        return { totalICP: 0n, totalBITTY: 0n };
-      return await a.getTotalRewardsDistributed();
+
+      // Fetch from rewardTransactions (accurate but may be empty after data loss)
+      let txICP = 0n;
+      let txBITTY = 0n;
+      if (a.getTotalRewardsDistributed) {
+        try {
+          const res = await a.getTotalRewardsDistributed();
+          txICP = BigInt(res?.totalICP ?? 0);
+          txBITTY = BigInt(res?.totalBITTY ?? 0);
+        } catch {}
+      }
+
+      // Also sum from distributed reward pools as fallback/supplement
+      // poolAmount is stored as e8s string, losingOptionPct is the rewards %
+      let poolICP = 0n;
+      let poolBITTY = 0n;
+      try {
+        const [scheduledPools, customPools] = await Promise.all([
+          a.getRewardsPools ? a.getRewardsPools() : [],
+          a.getCustomRewardsPools ? a.getCustomRewardsPools() : [],
+        ]);
+        for (const p of [...(scheduledPools ?? []), ...(customPools ?? [])]) {
+          if (!p.distributed) continue;
+          const pct = Number(p.losingOptionPct ?? 0);
+          const rawAmount = p.poolAmount ?? "0";
+          const poolAmountE8s = BigInt(
+            typeof rawAmount === "string"
+              ? Math.round(Number(rawAmount))
+              : Number(rawAmount),
+          );
+          const rewardsE8s = (poolAmountE8s * BigInt(pct)) / 100n;
+          const voteType = p.voteType;
+          const isICP =
+            voteType && (voteType.ICP !== undefined || voteType === "ICP");
+          if (isICP) {
+            poolICP += rewardsE8s;
+          } else {
+            poolBITTY += rewardsE8s;
+          }
+        }
+      } catch {}
+
+      // Use whichever is larger for each token (rewardTransactions vs pool calc)
+      return {
+        totalICP: txICP > poolICP ? txICP : poolICP,
+        totalBITTY: txBITTY > poolBITTY ? txBITTY : poolBITTY,
+      };
     },
     enabled: !!actor && !isFetching,
     staleTime: 60_000,
