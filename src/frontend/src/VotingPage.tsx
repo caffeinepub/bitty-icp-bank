@@ -2419,7 +2419,7 @@ function CreateProposalForm({
         voteTypeArg,
         options.map((o) => o.trim()),
         closeTimeNs,
-        voteAmount.trim(),
+        String(Math.round(Number(voteAmount.trim()) * 1e8)),
         destinationAddress.trim(),
       );
       if (result !== null && result !== undefined) {

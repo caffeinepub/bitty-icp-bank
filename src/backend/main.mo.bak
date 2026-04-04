@@ -733,14 +733,14 @@ actor {
 
   //------------------------------ Treasury Return Helper ------------------------------
 
-  // After distribution, send the winning remainder amount back to treasury (NOT the whole canister balance)
-  func sendRemainderToTreasury(voteType : VoteType, winningAmount : Nat) : async () {
-    if (winningAmount == 0) return;
+  // After distribution, send remainder of canister balance back to treasury
+  func sendRemainderToTreasury(voteType : VoteType) : async () {
     let ledgerId = switch (voteType) {
       case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
       case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
     };
     let ledger = actor(ledgerId) : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
       icrc1_transfer : ({
         from_subaccount : ?Blob;
         to : { owner : Principal; subaccount : ?Blob };
@@ -751,29 +751,32 @@ actor {
       }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
     };
     let fee : Nat = 10000;
-    if (winningAmount <= fee) return;
-    let sendAmount = winningAmount - fee;
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
     try {
-      let treasuryPrincipal = Principal.fromText(WALLET_PRINCIPAL);
-      ignore await ledger.icrc1_transfer({
-        from_subaccount = null;
-        to = { owner = treasuryPrincipal; subaccount = null };
-        amount = sendAmount;
-        fee = ?fee;
-        memo = null;
-        created_at_time = null;
-      });
+      let balance = await ledger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null });
+      if (balance > fee * 2) {
+        let sendAmount = balance - fee;
+        let treasuryPrincipal = Principal.fromText(WALLET_PRINCIPAL);
+        ignore await ledger.icrc1_transfer({
+          from_subaccount = null;
+          to = { owner = treasuryPrincipal; subaccount = null };
+          amount = if (sendAmount > fee) sendAmount - fee else 0;
+          fee = ?fee;
+          memo = null;
+          created_at_time = null;
+        });
+      };
     } catch (_) {};
   };
 
-  // After distribution for custom proposals, send the winning remainder amount to specified address (NOT the whole canister balance)
-  func sendRemainderToAddress(destination : Text, voteType : VoteType, winningAmount : Nat) : async () {
-    if (winningAmount == 0) return;
+  // After distribution for custom proposals, send remainder to specified address
+  func sendRemainderToAddress(destination : Text, voteType : VoteType) : async () {
     let ledgerId = switch (voteType) {
       case (#ICP) { "ryjl3-tyaaa-aaaaa-aaaba-cai" };
       case (#BITTYICP) { "qroj6-lyaaa-aaaam-qeqta-cai" };
     };
     let ledger = actor(ledgerId) : actor {
+      icrc1_balance_of : ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
       icrc1_transfer : ({
         from_subaccount : ?Blob;
         to : { owner : Principal; subaccount : ?Blob };
@@ -784,18 +787,21 @@ actor {
       }) -> async { #Ok : Nat; #Err : { #InsufficientFunds : { balance : Nat }; #BadFee : { expected_fee : Nat }; #TemporarilyUnavailable; #GenericError : { error_code : Nat; message : Text } } };
     };
     let fee : Nat = 10000;
-    if (winningAmount <= fee) return;
-    let sendAmount = winningAmount - fee;
+    let selfPrincipal = Principal.fromText("vd5sn-eyaaa-aaaae-qjqyq-cai");
     try {
-      let destPrincipal = Principal.fromText(destination);
-      ignore await ledger.icrc1_transfer({
-        from_subaccount = null;
-        to = { owner = destPrincipal; subaccount = null };
-        amount = sendAmount;
-        fee = ?fee;
-        memo = null;
-        created_at_time = null;
-      });
+      let balance = await ledger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null });
+      if (balance > fee * 2) {
+        let sendAmount = balance - fee;
+        let destPrincipal = Principal.fromText(destination);
+        ignore await ledger.icrc1_transfer({
+          from_subaccount = null;
+          to = { owner = destPrincipal; subaccount = null };
+          amount = if (sendAmount > fee) sendAmount - fee else 0;
+          fee = ?fee;
+          memo = null;
+          created_at_time = null;
+        });
+      };
     } catch (_) {};
   };
 
@@ -854,9 +860,8 @@ actor {
           if (bal >= rewardsTotal) {
             // Sufficient funds: auto-distribute
             ignore await distributeRewardsInternal(voteId, entry);
-            // Send only the winning percentage back to treasury (not the entire canister balance)
-            let winningAmount1 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
-            ignore sendRemainderToTreasury(v.voteType, winningAmount1);
+            // Send remainder back to treasury
+            ignore sendRemainderToTreasury(v.voteType);
           } else {
             // Insufficient: add to pending
             removePendingDistribution(false, voteId);
@@ -1030,10 +1035,8 @@ actor {
       case (?pool) {
         let result = await distributeRewardsInternal(voteId, pool);
         if (result.success) {
-          let totalPoolAmt = parseNatText(pool.poolAmount);
-          let rewardsPaid = totalPoolAmt * pool.losingOptionPct / 100;
-          let winningRemainder = if (totalPoolAmt > rewardsPaid) totalPoolAmt - rewardsPaid else 0;
-          ignore sendRemainderToTreasury(pool.voteType, winningRemainder);
+          // Send remainder back to treasury
+          ignore sendRemainderToTreasury(pool.voteType);
         };
         result;
       };
@@ -1248,11 +1251,10 @@ actor {
           let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
           if (bal >= rewardsTotal) {
             ignore await distributeCustomRewardsInternal(proposalId, entry);
-            let winningAmountC = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
             let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
             switch (metaOpt) {
-              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmountC) };
-              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmountC) };
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType) };
             };
           } else {
             removePendingDistribution(true, proposalId);
@@ -1409,13 +1411,10 @@ actor {
       case (?pool) {
         let result = await distributeCustomRewardsInternal(proposalId, pool);
         if (result.success) {
-          let totalPoolAmtC = parseNatText(pool.poolAmount);
-          let rewardsPaidC = totalPoolAmtC * pool.losingOptionPct / 100;
-          let winningRemainderC = if (totalPoolAmtC > rewardsPaidC) totalPoolAmtC - rewardsPaidC else 0;
           let metaOpt2 = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == proposalId }).values().next();
           switch (metaOpt2) {
-            case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pool.voteType, winningRemainderC) };
-            case (null) { ignore sendRemainderToTreasury(pool.voteType, winningRemainderC) };
+            case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pool.voteType) };
+            case (null) { ignore sendRemainderToTreasury(pool.voteType) };
           };
         };
         result;
@@ -1688,8 +1687,7 @@ actor {
           let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
           if (bal >= rewardsTotal) {
             ignore await distributeRewardsInternal(v.id, entry);
-            let winningAmt5 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
-            ignore sendRemainderToTreasury(v.voteType, winningAmt5);
+            ignore sendRemainderToTreasury(v.voteType);
           } else {
             removePendingDistribution(false, v.id);
             let pending : PendingDistribution = {
@@ -1752,11 +1750,10 @@ actor {
           let bal = try { await checkLedger.icrc1_balance_of({ owner = selfPrincipal; subaccount = null }) } catch (_) { 0 };
           if (bal >= rewardsTotal) {
             ignore await distributeCustomRewardsInternal(p.id, entry);
-            let winningAmt6 = if (totalPool > rewardsTotal) totalPool - rewardsTotal else 0;
             let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == p.id }).values().next();
             switch (metaOpt) {
-              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType, winningAmt6) };
-              case (null) { ignore sendRemainderToTreasury(p.voteType, winningAmt6) };
+              case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, p.voteType) };
+              case (null) { ignore sendRemainderToTreasury(p.voteType) };
             };
           } else {
             removePendingDistribution(true, p.id);
@@ -1797,13 +1794,10 @@ actor {
             switch (poolOpt) {
               case (?pool) {
                 ignore await distributeCustomRewardsInternal(pd.proposalId, pool);
-                let totalPoolR = parseNatText(pool.poolAmount);
-                let rewardsPaidR = totalPoolR * pool.losingOptionPct / 100;
-                let winningAmtR = if (totalPoolR > rewardsPaidR) totalPoolR - rewardsPaidR else 0;
                 let metaOpt = customProposalMeta.filter(func(m : CustomProposalMeta) : Bool { m.proposalId == pd.proposalId }).values().next();
                 switch (metaOpt) {
-                  case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pd.voteType, winningAmtR) };
-                  case (null) { ignore sendRemainderToTreasury(pd.voteType, winningAmtR) };
+                  case (?meta) { ignore sendRemainderToAddress(meta.destinationAddress, pd.voteType) };
+                  case (null) { ignore sendRemainderToTreasury(pd.voteType) };
                 };
               };
               case (null) { removePendingDistribution(true, pd.proposalId) };
@@ -1816,10 +1810,7 @@ actor {
             switch (poolOpt) {
               case (?pool) {
                 ignore await distributeRewardsInternal(pd.voteId, pool);
-                let totalPoolS = parseNatText(pool.poolAmount);
-                let rewardsPaidS = totalPoolS * pool.losingOptionPct / 100;
-                let winningAmtS = if (totalPoolS > rewardsPaidS) totalPoolS - rewardsPaidS else 0;
-                ignore sendRemainderToTreasury(pd.voteType, winningAmtS);
+                ignore sendRemainderToTreasury(pd.voteType);
               };
               case (null) { removePendingDistribution(false, pd.voteId) };
             };
