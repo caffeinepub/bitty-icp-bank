@@ -88,9 +88,10 @@ export function InternetIdentityProvider({
   children: ReactNode;
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // Store authClient in a ref so mutations never cause re-renders or effect re-runs
+  // Store the auth client in a REF so updating it never triggers a re-render
+  // and never causes the initialization useEffect to re-run.
   const authClientRef = useRef<AuthClient | null>(null);
-  const initStarted = useRef(false);
+  const initializedRef = useRef(false);
   const createOptionsRef = useRef(createOptions);
 
   const [identity, setIdentity] = useState<Identity | undefined>(undefined);
@@ -159,8 +160,6 @@ export function InternetIdentityProvider({
     void client
       .logout()
       .then(() => {
-        authClientRef.current = null;
-        initStarted.current = false;
         setIdentity(undefined);
         setStatus("idle");
         setError(undefined);
@@ -175,18 +174,20 @@ export function InternetIdentityProvider({
       });
   }, [setErrorMessage]);
 
-  // Run ONCE on mount. Never re-runs because dependencies are empty.
+  // Run ONCE on mount — never re-run because we use a ref guard.
   useEffect(() => {
-    if (initStarted.current) return;
-    initStarted.current = true;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
     void (async () => {
       try {
+        setStatus("initializing");
         const client = await createAuthClient(createOptionsRef.current);
         authClientRef.current = client;
         const isAuthenticated = await client.isAuthenticated();
         if (isAuthenticated) {
-          setIdentity(client.getIdentity());
+          const loadedIdentity = client.getIdentity();
+          setIdentity(loadedIdentity);
         }
       } catch (unknownError) {
         setStatus("loginError");
@@ -199,8 +200,7 @@ export function InternetIdentityProvider({
         setStatus("idle");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps: intentionally run once only
+  }, []);
 
   const value = useMemo<ProviderValue>(
     () => ({
