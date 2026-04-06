@@ -8,17 +8,25 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { setCachedActor } from "@/hooks/actorCache";
+import { useActor } from "@/hooks/useActor";
 import {
   type Announcement,
   useAddAnnouncement,
   useAdminLogin,
   useDeleteAnnouncement,
+  useGetAdminConfig,
   useGetAnnouncements,
   useGetFundBalance,
+  useGetGamesWalletBalances,
   useGetLiveBalances,
   useGetManualBalances,
   useGetNeuronStake,
+  useGetRewardsWalletBalances,
+  useGetTotalRewardsDistributed,
+  useSetGamesWallet,
   useSetManualBalances,
+  useSetManualBittyPrice,
   useSetManualFundBalance,
   useTokenPrices,
   useUpdateAnnouncement,
@@ -30,13 +38,13 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Gamepad2,
   HelpCircle,
   Landmark,
   Loader2,
   LogOut,
   Pencil,
   Plus,
-  RefreshCw,
   ShieldCheck,
   Trash2,
   TrendingUp,
@@ -44,12 +52,13 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
+import CommunityHistoryPage from "./CommunityHistoryPage";
+import HowItWorksPage from "./HowItWorksPage";
+import ScheduledHistoryPage from "./ScheduledHistoryPage";
+import VotingPage from "./VotingPage";
 
-const TREASURY_WALLET =
-  "ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe";
-const BITTYICP_CANISTER = "qroj6-lyaaa-aaaam-qeqta-cai";
-const FUND_WALLET =
-  "vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae";
+const HIDE_BALANCES = true;
+
 const NEURON_ID = "2927437143767212939";
 const ADMIN_PASSWORD = "bittybittywhatwhat";
 
@@ -143,6 +152,7 @@ interface BalanceCardProps {
   isLoading: boolean;
   isAdmin: boolean;
   usdPrice: number | null | undefined; // price per token in USD
+  explorerUrl?: string;
 }
 
 function BalanceCard({
@@ -153,13 +163,13 @@ function BalanceCard({
   isLoading,
   isAdmin,
   usdPrice,
+  explorerUrl,
 }: BalanceCardProps) {
   const hasManual = manualValue && manualValue.trim() !== "";
   const hasLive = liveValue !== null && liveValue !== undefined;
   const showingManual = hasManual;
   const cardClass = "glass-card-gold gold-glow";
   const amountClass = "text-gold";
-  const borderClass = "border-[oklch(0.87_0.17_90/0.4)]";
 
   const balanceNum = resolveBalanceNumber(manualValue, liveValue);
   const usdValue =
@@ -167,57 +177,77 @@ function BalanceCard({
       ? balanceNum * usdPrice
       : null;
 
-  return (
+  const cardContent = (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-3 min-w-0 flex-1`}
+      className={`${cardClass} rounded-2xl p-6 flex flex-col gap-2 min-w-0 flex-1 ${explorerUrl ? "cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all" : ""}`}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-          {token}
-        </span>
-        {isLoading ? (
-          <Badge variant="outline" className={`text-xs ${borderClass}`}>
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
-          </Badge>
-        ) : showingManual && isAdmin ? (
-          <Badge
-            variant="outline"
-            className="text-xs border-yellow-500/40 text-yellow-400"
-          >
-            <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
-          </Badge>
-        ) : usdValue !== null ? (
-          <span className="text-xs font-semibold text-gold/80">
-            {formatUsd(usdValue)}
-          </span>
-        ) : showingManual || hasLive ? (
-          <Badge
-            variant="outline"
-            className={`text-xs ${borderClass} ${amountClass}`}
-          >
-            <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-          </Badge>
-        ) : null}
+      <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
+        {token}
       </div>
-      <div
-        className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
-      >
-        {isLoading ? (
-          <span className="opacity-40">—</span>
-        ) : hasManual ? (
-          manualValue
-        ) : hasLive ? (
-          formatBalance(liveValue!)
-        ) : (
-          <span className="opacity-40">0</span>
-        )}
-      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground py-1">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Loading...</span>
+        </div>
+      ) : (
+        <div
+          className={`text-3xl font-heading font-bold ${amountClass} tabular-nums break-all`}
+        >
+          {HIDE_BALANCES ? (
+            <span>0</span>
+          ) : hasManual ? (
+            manualValue
+          ) : hasLive ? (
+            formatBalance(liveValue!)
+          ) : (
+            <span className="opacity-40">0</span>
+          )}
+        </div>
+      )}
       <div className="text-xs text-muted-foreground font-mono">{symbol}</div>
+      {isLoading ? (
+        <div className="text-xs text-muted-foreground opacity-50 mt-0.5">
+          Loading…
+        </div>
+      ) : HIDE_BALANCES ? (
+        <div className="text-sm text-muted-foreground mt-0.5">$0.00 USD</div>
+      ) : usdValue !== null ? (
+        <div className="text-sm text-muted-foreground mt-0.5">
+          {formatUsd(usdValue)} USD
+        </div>
+      ) : null}
+      {!isLoading && usdValue === null && showingManual && isAdmin && (
+        <Badge
+          variant="outline"
+          className="text-xs border-yellow-500/40 text-yellow-400 self-start"
+        >
+          <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
+        </Badge>
+      )}
+      {explorerUrl && (
+        <div className="text-xs text-muted-foreground/50 mt-1">
+          View on IC Dashboard ↗
+        </div>
+      )}
     </motion.div>
   );
+
+  if (explorerUrl) {
+    return (
+      <a
+        href={explorerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block min-w-0 flex-1"
+      >
+        {cardContent}
+      </a>
+    );
+  }
+  return cardContent;
 }
 
 // ─── Admin Panel ─────────────────────────────────────────────────────────────
@@ -228,6 +258,7 @@ interface AdminPanelProps {
 }
 
 function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
+  const { actor } = useActor();
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
   const [editingId, setEditingId] = useState<bigint | null>(null);
@@ -242,20 +273,31 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   const deleteAnn = useDeleteAnnouncement();
   const setManual = useSetManualBalances();
   const setManualFundBalance = useSetManualFundBalance();
+  const setManualBittyPriceMutation = useSetManualBittyPrice();
+  const setGamesWalletMutation = useSetGamesWallet();
+  const [manualBittyPrice, setManualBittyPrice] = useState("");
+  const [gamesWalletInput, setGamesWalletInput] = useState("");
+  const [resetWalletsLoading, setResetWalletsLoading] = useState(false);
+  const [resetWalletsConfirm, setResetWalletsConfirm] = useState(false);
 
   async function handlePostAnnouncement() {
     if (!annTitle.trim() || !annBody.trim()) {
       toast.error("Title and body are required");
       return;
     }
-    await addAnn.mutateAsync({
-      password,
-      title: annTitle.trim(),
-      body: annBody.trim(),
-    });
-    toast.success("Announcement posted!");
-    setAnnTitle("");
-    setAnnBody("");
+    try {
+      await addAnn.mutateAsync({
+        password,
+        title: annTitle.trim(),
+        body: annBody.trim(),
+        actor,
+      });
+      toast.success("Announcement posted!");
+      setAnnTitle("");
+      setAnnBody("");
+    } catch (e: any) {
+      toast.error(`Failed to post announcement: ${e?.message ?? String(e)}`);
+    }
   }
 
   async function handleUpdateAnnouncement(id: bigint) {
@@ -268,13 +310,14 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       id,
       title: editTitle.trim(),
       body: editBody.trim(),
+      actor,
     });
     toast.success("Announcement updated!");
     setEditingId(null);
   }
 
   async function handleDeleteAnnouncement(id: bigint) {
-    await deleteAnn.mutateAsync({ password, id });
+    await deleteAnn.mutateAsync({ password, id, actor });
     toast.success("Announcement deleted");
   }
 
@@ -287,6 +330,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
       password,
       icp: manualIcp.trim(),
       bitty: manualBitty.trim(),
+      actor,
     });
     toast.success("Treasury manual balances saved!");
     setManualIcp("");
@@ -294,7 +338,7 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
   }
 
   async function handleClearTreasuryManual() {
-    await setManual.mutateAsync({ password, icp: "", bitty: "" });
+    await setManual.mutateAsync({ password, icp: "", bitty: "", actor });
     toast.success("Treasury manual balances cleared — live values will show");
     setManualIcp("");
     setManualBitty("");
@@ -308,17 +352,86 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
     await setManualFundBalance.mutateAsync({
       password,
       fund: manualFund.trim(),
+      actor,
     });
     toast.success("Fund manual balance saved!");
     setManualFund("");
   }
 
   async function handleClearFundManual() {
-    await setManualFundBalance.mutateAsync({ password, fund: "" });
+    await setManualFundBalance.mutateAsync({ password, fund: "", actor });
     toast.success("Fund manual balance cleared — live value will show");
     setManualFund("");
   }
 
+  async function handleSaveBittyPrice() {
+    const trimmed = manualBittyPrice.trim();
+    if (!trimmed) {
+      toast.error("Enter a price");
+      return;
+    }
+    const num = Number.parseFloat(trimmed);
+    if (Number.isNaN(num) || num <= 0) {
+      toast.error("Enter a valid positive number");
+      return;
+    }
+    try {
+      await setManualBittyPriceMutation.mutateAsync({
+        password,
+        price: trimmed,
+        actor,
+      });
+      toast.success("BITTYICP price saved!");
+      setManualBittyPrice("");
+    } catch {
+      toast.error("Failed to save price");
+    }
+  }
+
+  async function handleClearBittyPrice() {
+    try {
+      await setManualBittyPriceMutation.mutateAsync({
+        password,
+        price: "",
+        actor,
+      });
+      toast.success(
+        "BITTYICP price cleared — live price will be used if available",
+      );
+      setManualBittyPrice("");
+    } catch {
+      toast.error("Failed to clear price");
+    }
+  }
+
+  async function handleSaveGamesWallet() {
+    const trimmed = gamesWalletInput.trim();
+    if (!trimmed) {
+      toast.error("Enter a wallet address");
+      return;
+    }
+    try {
+      await setGamesWalletMutation.mutateAsync({
+        password,
+        addr: trimmed,
+        actor,
+      });
+      toast.success("Games wallet address saved!");
+      setGamesWalletInput("");
+    } catch {
+      toast.error("Failed to save games wallet");
+    }
+  }
+
+  async function handleClearGamesWallet() {
+    try {
+      await setGamesWalletMutation.mutateAsync({ password, addr: "", actor });
+      toast.success("Games wallet cleared");
+      setGamesWalletInput("");
+    } catch {
+      toast.error("Failed to clear");
+    }
+  }
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -351,6 +464,9 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
           value={annTitle}
           onChange={(e) => setAnnTitle(e.target.value)}
           className="bg-secondary/50 border-border"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handlePostAnnouncement();
+          }}
           data-ocid="announcement.title.input"
         />
         <Textarea
@@ -360,6 +476,10 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
           onChange={(e) => setAnnBody(e.target.value)}
           rows={3}
           className="bg-secondary/50 border-border resize-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey))
+              handlePostAnnouncement();
+          }}
           data-ocid="announcement.body.textarea"
         />
         <Button
@@ -494,6 +614,169 @@ function AdminPanel({ password, onLogout, announcements }: AdminPanelProps) {
         </div>
       </div>
 
+      {/* BITTYICP Price Override */}
+      <div className="glass-card-gold rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
+          BITTYICP Price Override
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Set the manual price per $BITTYICP in USD. Live ICPSwap price takes
+          priority if available — this is used as fallback.
+        </p>
+        <div className="space-y-1">
+          <label
+            htmlFor="manual-bitty-price"
+            className="text-xs text-muted-foreground"
+          >
+            Price per $BITTYICP (USD)
+          </label>
+          <Input
+            id="manual-bitty-price"
+            placeholder="e.g. 0.00042"
+            value={manualBittyPrice}
+            onChange={(e) => setManualBittyPrice(e.target.value)}
+            className="bg-secondary/50 border-border font-mono"
+            data-ocid="manual.bitty_price.input"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleSaveBittyPrice}
+            disabled={setManualBittyPriceMutation.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="manual.bitty_price.save_button"
+          >
+            {setManualBittyPriceMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save Price
+          </Button>
+          <Button
+            onClick={handleClearBittyPrice}
+            disabled={setManualBittyPriceMutation.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="manual.bitty_price.clear_button"
+          >
+            Clear (use live)
+          </Button>
+        </div>
+      </div>
+
+      {/* Games & Development Wallet */}
+      <div className="glass-card-gold rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-yellow-400">
+          Games & Development Wallet
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Set the wallet address for the Games & Development fund. When set,
+          live balances will display on the main page.
+        </p>
+        <div className="space-y-1">
+          <label
+            htmlFor="games-wallet"
+            className="text-xs text-muted-foreground"
+          >
+            Wallet Address
+          </label>
+          <Input
+            id="games-wallet"
+            placeholder="Paste wallet address..."
+            value={gamesWalletInput}
+            onChange={(e) => setGamesWalletInput(e.target.value)}
+            className="bg-secondary/50 border-border font-mono text-xs"
+            data-ocid="admin.games_wallet.input"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleSaveGamesWallet}
+            disabled={setGamesWalletMutation.isPending}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 flex-1"
+            data-ocid="admin.games_wallet.save_button"
+          >
+            {setGamesWalletMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Save Wallet
+          </Button>
+          <Button
+            onClick={handleClearGamesWallet}
+            disabled={setGamesWalletMutation.isPending}
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground flex-1"
+            data-ocid="admin.games_wallet.clear_button"
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
+      {/* Reset Verified Wallets */}
+      <div className="space-y-3 border border-red-500/30 rounded-xl p-4">
+        <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-red-400">
+          ⚠ Danger Zone
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Reset All Verified Wallets will permanently clear every user's
+          verified external wallet links. This cannot be undone.
+        </p>
+        {!resetWalletsConfirm ? (
+          <Button
+            onClick={() => setResetWalletsConfirm(true)}
+            variant="outline"
+            className="border-red-500/40 text-red-400 hover:bg-red-500/10 w-full"
+            data-ocid="admin.reset_wallets.button"
+          >
+            Reset All Verified Wallets
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-red-400 font-semibold text-center">
+              Are you sure? This clears ALL users' verified wallets.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                onClick={async () => {
+                  setResetWalletsLoading(true);
+                  try {
+                    const a = actor as any;
+                    if (!a || !a.adminResetVerifiedWallets)
+                      throw new Error("Not connected");
+                    await a.adminResetVerifiedWallets(password);
+                    toast.success("All verified wallets have been reset.");
+                    setResetWalletsConfirm(false);
+                  } catch (err: any) {
+                    toast.error(
+                      `Failed to reset: ${err?.message ?? String(err)}`,
+                    );
+                  } finally {
+                    setResetWalletsLoading(false);
+                  }
+                }}
+                disabled={resetWalletsLoading}
+                variant="destructive"
+                className="flex-1"
+                data-ocid="admin.reset_wallets.confirm_button"
+              >
+                {resetWalletsLoading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : null}
+                Yes, Reset All
+              </Button>
+              <Button
+                onClick={() => setResetWalletsConfirm(false)}
+                variant="ghost"
+                className="flex-1 text-muted-foreground"
+                data-ocid="admin.reset_wallets.cancel_button"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
       {/* Existing Announcements */}
       <div className="space-y-3">
         <h3 className="font-heading font-semibold text-sm tracking-widest uppercase text-muted-foreground">
@@ -722,13 +1005,23 @@ function LoginModal({ open, onClose, onSuccess }: LoginModalProps) {
 
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<
+    | "dashboard"
+    | "voting"
+    | "history/scheduled"
+    | "history/community"
+    | "how-it-works"
+  >("dashboard");
   const [adminPassword, setAdminPassword] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const qc = useQueryClient();
+  const _qc = useQueryClient();
+
+  const { actor } = useActor();
+  if (actor) setCachedActor(actor);
 
   const liveBalances = useGetLiveBalances();
   const fundBalance = useGetFundBalance();
@@ -736,6 +1029,13 @@ export default function App() {
   const manualBalances = useGetManualBalances();
   const announcements = useGetAnnouncements();
   const tokenPrices = useTokenPrices();
+  const adminConfig = useGetAdminConfig();
+  const GAMES_WALLET_ADDRESS =
+    "slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe";
+  const gamesWallet = adminConfig.data?.gamesWallet || GAMES_WALLET_ADDRESS;
+  const gamesBalances = useGetGamesWalletBalances(gamesWallet);
+  const rewardsWalletBalances = useGetRewardsWalletBalances();
+  const totalRewardsData = useGetTotalRewardsDistributed();
 
   const isAdmin = !!adminPassword;
 
@@ -755,16 +1055,6 @@ export default function App() {
       setTapCount(0);
       tapTimerRef.current = null;
     }, 3000);
-  }
-
-  function handleRefresh() {
-    qc.invalidateQueries({ queryKey: ["liveBalances"] });
-    qc.invalidateQueries({ queryKey: ["manualBalances"] });
-    qc.invalidateQueries({ queryKey: ["announcements"] });
-    qc.invalidateQueries({ queryKey: ["fundBalance"] });
-    qc.invalidateQueries({ queryKey: ["neuronStake"] });
-    qc.invalidateQueries({ queryKey: ["tokenPrices"] });
-    toast.success("Refreshing balances...");
   }
 
   function handleLoginSuccess(pw: string) {
@@ -809,22 +1099,113 @@ export default function App() {
       : null;
   const totalIcpLoading =
     (liveBalances.isLoading && manualBalances.isLoading) ||
-    neuronStake.isLoading ||
-    tokenPrices.isLoading;
+    neuronStake.isLoading;
+
+  // Grand total USD = all treasury sources combined
+  const bittyTreasuryNum = resolveBalanceNumber(manualBitty, bittyLive);
+  const bittyTreasuryUsd =
+    bittyTreasuryNum !== null && bittyUsd !== null
+      ? bittyTreasuryNum * bittyUsd
+      : null;
+
+  const gamesBittyRaw = gamesBalances.data?.bitty ?? null;
+  const gamesBittyNum =
+    gamesBittyRaw !== null ? Number(gamesBittyRaw) / 1e8 : null;
+  const gamesIcpRaw = gamesBalances.data?.icp ?? null;
+  const gamesIcpNum = gamesIcpRaw !== null ? Number(gamesIcpRaw) / 1e8 : null;
+  const gamesIcpUsd =
+    gamesIcpNum !== null && icpUsd !== null ? gamesIcpNum * icpUsd : null;
+  const gamesUsdValue =
+    gamesBittyNum !== null && bittyUsd !== null
+      ? gamesBittyNum * bittyUsd
+      : null;
+
+  const rewardsWalletBittyRaw = rewardsWalletBalances.data?.bitty ?? null;
+  const rewardsWalletBittyNum =
+    rewardsWalletBittyRaw !== null ? Number(rewardsWalletBittyRaw) / 1e8 : null;
+  const rewardsWalletIcpRaw = rewardsWalletBalances.data?.icp ?? null;
+  const rewardsWalletIcpNum =
+    rewardsWalletIcpRaw !== null ? Number(rewardsWalletIcpRaw) / 1e8 : null;
+  const rewardsWalletIcpUsd =
+    rewardsWalletIcpNum !== null && icpUsd !== null
+      ? rewardsWalletIcpNum * icpUsd
+      : null;
+  const rewardsWalletBittyUsd =
+    rewardsWalletBittyNum !== null && bittyUsd !== null
+      ? rewardsWalletBittyNum * bittyUsd
+      : null;
+
+  const totalRewardsICP =
+    totalRewardsData.data?.totalICP != null
+      ? Number(totalRewardsData.data.totalICP) / 1e8
+      : null;
+  const totalRewardsBITTY =
+    totalRewardsData.data?.totalBITTY != null
+      ? Number(totalRewardsData.data.totalBITTY) / 1e8
+      : null;
+  const totalRewardsIcpUsd =
+    totalRewardsICP !== null && icpUsd !== null
+      ? totalRewardsICP * icpUsd
+      : null;
+  const totalRewardsBittyUsd =
+    totalRewardsBITTY !== null && bittyUsd !== null
+      ? totalRewardsBITTY * bittyUsd
+      : null;
+
+  const grandTotalUsd =
+    totalIcpUsd !== null ||
+    bittyTreasuryUsd !== null ||
+    fundUsdValue !== null ||
+    gamesUsdValue !== null ||
+    rewardsWalletIcpUsd !== null ||
+    rewardsWalletBittyUsd !== null
+      ? (totalIcpUsd ?? 0) +
+        (bittyTreasuryUsd ?? 0) +
+        (fundUsdValue ?? 0) +
+        (gamesUsdValue ?? 0) +
+        (rewardsWalletIcpUsd ?? 0) +
+        (rewardsWalletBittyUsd ?? 0)
+      : null;
+
+  const grandTotalLoading =
+    totalIcpLoading || (liveBalances.isLoading && manualBalances.isLoading);
 
   const sortedAnnouncements = [...(announcements.data ?? [])].sort((a, b) =>
     b.timestamp > a.timestamp ? 1 : -1,
   );
+
+  if (currentPage === "history/scheduled") {
+    return <ScheduledHistoryPage onBack={() => setCurrentPage("voting")} />;
+  }
+
+  if (currentPage === "history/community") {
+    return <CommunityHistoryPage onBack={() => setCurrentPage("voting")} />;
+  }
+
+  if (currentPage === "how-it-works") {
+    return <HowItWorksPage onBack={() => setCurrentPage("voting")} />;
+  }
+
+  if (currentPage === "voting") {
+    return (
+      <VotingPage
+        onBack={() => setCurrentPage("dashboard")}
+        isAdmin={isAdmin}
+        adminPassword={ADMIN_PASSWORD}
+        onNavigate={(page) => setCurrentPage(page as any)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen relative overflow-x-hidden font-body">
       {/* Background */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/assets/uploads/IMG_5288-1.jpeg')" }}
+        style={{ backgroundImage: "url('/assets/IMG_5288.jpeg')" }}
       />
       {/* Overlay */}
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.65)] via-[oklch(0.10_0.025_252/0.60)] to-[oklch(0.05_0.01_252/0.75)]" />
+      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[oklch(0.08_0.03_252/0.40)] via-[oklch(0.10_0.025_252/0.35)] to-[oklch(0.05_0.01_252/0.55)]" />
 
       <Toaster position="top-right" richColors />
 
@@ -851,6 +1232,15 @@ export default function App() {
               </div>
             </button>
             <div className="flex items-center gap-2">
+              <motion.button
+                onClick={() => setCurrentPage("voting")}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-xs tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
+                data-ocid="vote_page.link"
+              >
+                💳 Vote
+              </motion.button>
               {isAdmin && (
                 <Button
                   size="sm"
@@ -867,79 +1257,167 @@ export default function App() {
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-10 space-y-10">
-          {/* HOW IT WORKS Button */}
-          <div className="flex justify-center">
-            <motion.button
-              onClick={() => setHowItWorksOpen(true)}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-[oklch(0.87_0.17_90/0.55)] bg-[oklch(0.87_0.17_90/0.08)] text-gold font-heading font-bold text-sm tracking-widest uppercase shadow-[0_0_18px_oklch(0.87_0.17_90/0.18)] hover:bg-[oklch(0.87_0.17_90/0.16)] hover:shadow-[0_0_28px_oklch(0.87_0.17_90/0.30)] transition-all duration-200"
-              data-ocid="how_it_works.open_modal_button"
-            >
-              <HelpCircle className="h-4 w-4" />
-              How It Works
-            </motion.button>
-          </div>
-
-          {/* Total ICP Treasury Value Banner */}
+          {/* Grand Total Treasury Value Banner */}
+          {/* Grand Total + CEO stacked vertically */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="glass-card-gold gold-glow rounded-2xl p-6"
-            data-ocid="total_icp.card"
+            transition={{ duration: 0.55 }}
+            className="glass-card-gold rounded-2xl overflow-visible"
+            style={{
+              boxShadow:
+                "0 0 48px oklch(0.87 0.17 90 / 0.38), 0 0 96px oklch(0.87 0.17 90 / 0.18)",
+            }}
+            data-ocid="grand_total.card"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Total ICP Treasury Value
-                </p>
-                <p className="text-xs text-muted-foreground/60">
-                  ICP Treasury + NNS Neuron Stake
-                </p>
-              </div>
-              <div className="text-right">
-                {totalIcpLoading ? (
-                  <div className="flex items-center gap-2 justify-end">
-                    <Loader2 className="h-5 w-5 animate-spin text-gold/60" />
-                    <span className="text-2xl font-heading font-bold text-gold/40">
-                      —
-                    </span>
-                  </div>
-                ) : totalIcpUsd !== null ? (
-                  <span className="text-3xl font-heading font-bold text-gold tabular-nums">
-                    {formatUsd(totalIcpUsd)}
-                  </span>
-                ) : (
-                  <span className="text-2xl font-heading font-bold text-gold/40">
+            {/* Total Balance */}
+            <div className="p-7 text-center">
+              <p className="text-xs font-semibold text-gold/70 tracking-[0.22em] uppercase mb-1">
+                Total Treasury Value
+              </p>
+              <p className="text-xs text-muted-foreground/50 mb-4">
+                All Wallets · Neuron · Funds
+              </p>
+              {HIDE_BALANCES ? (
+                <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
+                  $0.00
+                </span>
+              ) : grandTotalLoading ? (
+                <div className="flex items-center justify-center gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-gold/60" />
+                  <span className="text-5xl font-heading font-bold text-gold/30">
                     —
                   </span>
-                )}
+                </div>
+              ) : grandTotalUsd !== null ? (
+                <span className="text-5xl sm:text-6xl font-heading font-extrabold text-gold tabular-nums drop-shadow-[0_0_18px_oklch(0.87_0.17_90/0.55)]">
+                  {formatUsd(grandTotalUsd)}
+                </span>
+              ) : (
+                <span className="text-5xl font-heading font-bold text-gold/30">
+                  —
+                </span>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Governance Rewards Banner — compact */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.05 }}
+            className="glass-card-gold rounded-xl px-4 py-3"
+            data-ocid="governance_rewards.card"
+          >
+            <p className="text-[10px] font-semibold text-gold/70 tracking-[0.2em] uppercase mb-2 text-center">
+              Governance Rewards Distributed
+            </p>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-1">
+              {/* ICP Distributed */}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  $ICP:
+                </span>
+                <span className="text-base font-heading font-bold text-gold tabular-nums">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40 text-sm">—</span>
+                  ) : (
+                    (totalRewardsICP ?? 0).toLocaleString("en-US", {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 8,
+                    })
+                  )}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {totalRewardsData.isLoading
+                    ? ""
+                    : `(${formatUsd(totalRewardsIcpUsd ?? 0)} USD)`}
+                </span>
+              </div>
+              {/* BITTYICP Distributed */}
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">
+                  $BITTYICP:
+                </span>
+                <span className="text-base font-heading font-bold text-gold tabular-nums">
+                  {totalRewardsData.isLoading ? (
+                    <span className="opacity-40 text-sm">—</span>
+                  ) : (
+                    (totalRewardsBITTY ?? 0).toLocaleString("en-US", {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 8,
+                    })
+                  )}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {totalRewardsData.isLoading
+                    ? ""
+                    : `(${formatUsd(totalRewardsBittyUsd ?? 0)} USD)`}
+                </span>
               </div>
             </div>
           </motion.div>
 
+          {/* Bitty CEO — HOW IT WORKS centered standalone section */}
+          <div className="flex flex-col items-center mt-2 mb-2">
+            {/* Speech bubble above CEO, tail pointing DOWN */}
+            <button
+              onClick={() => setHowItWorksOpen(true)}
+              data-ocid="how_it_works.open_modal_button"
+              type="button"
+              className="relative bg-white border-4 border-black rounded-2xl px-6 py-3 cursor-pointer hover:bg-yellow-50 transition-colors duration-150 shadow-[4px_4px_0px_#000] mb-0"
+            >
+              <span
+                className="font-black text-black tracking-wider uppercase leading-tight block text-center"
+                style={{
+                  fontFamily: "Impact, Arial Black, sans-serif",
+                  fontSize: "1.6rem",
+                  WebkitTextStroke: "0.5px black",
+                }}
+              >
+                HOW IT WORKS
+              </span>
+              {/* Tail outer (black) pointing DOWN */}
+              <span
+                className="absolute -bottom-[14px] left-1/2 -translate-x-1/2 w-0 h-0"
+                style={{
+                  borderLeft: "12px solid transparent",
+                  borderRight: "12px solid transparent",
+                  borderTop: "14px solid black",
+                }}
+              />
+              {/* Tail inner (white) pointing DOWN */}
+              <span
+                className="absolute -bottom-[11px] left-1/2 -translate-x-1/2 w-0 h-0"
+                style={{
+                  borderLeft: "10px solid transparent",
+                  borderRight: "10px solid transparent",
+                  borderTop: "12px solid white",
+                }}
+              />
+            </button>
+            {/* CEO Character */}
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen(true)}
+              className="border-none bg-transparent p-0 cursor-pointer hover:scale-105 transition-transform duration-200 mt-1"
+              aria-label="How It Works"
+            >
+              <img
+                src="/assets/generated/bitty-ceo-cropped-transparent.dim_600x800.png"
+                alt="Bitty CEO"
+                className="object-contain"
+                style={{ height: 280 }}
+              />
+            </button>
+          </div>
+
           {/* Balance Section */}
           <section>
-            <div className="flex items-center justify-between mb-5">
+            <div className="mb-5">
               <h2 className="font-heading font-bold text-lg text-foreground tracking-tight">
-                Treasury Balances
+                TREASURY BALANCES
               </h2>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={liveBalances.isFetching}
-                className="border-border/40 text-muted-foreground hover:text-foreground"
-                data-ocid="balances.refresh_button"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 mr-1 ${
-                    liveBalances.isFetching ? "animate-spin" : ""
-                  }`}
-                />
-                Refresh
-              </Button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -948,230 +1426,399 @@ export default function App() {
                 symbol="Internet Computer"
                 liveValue={icpLive}
                 manualValue={manualIcp}
-                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={icpUsd}
+                explorerUrl="https://www.icexplorer.io/address/detail/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
               <BalanceCard
                 token="$BITTYICP Balance"
                 symbol="BITTY on ICP"
                 liveValue={bittyLive}
                 manualValue={manualBitty}
-                isLoading={liveBalances.isLoading && manualBalances.isLoading}
+                isLoading={liveBalances.isLoading || manualBalances.isLoading}
                 isAdmin={isAdmin}
                 usdPrice={bittyUsd}
+                explorerUrl="https://www.icexplorer.io/address/detail/ns32b-r2krl-rtozy-ymo6u-7pujx-gr7ff-uhyup-fsm3v-t5ul7-5lj3b-mqe"
               />
-            </div>
-
-            {/* Copyable IDs */}
-            <div className="mt-5 glass-card rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">
-                Treasury IDs
-              </p>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">
-                  Wallet Address
-                </p>
-                <CopyableId value={TREASURY_WALLET} label="Wallet Address" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">
-                  $BITTYICP Canister ID
-                </p>
-                <CopyableId
-                  value={BITTYICP_CANISTER}
-                  label="BITTYICP Canister ID"
-                />
-              </div>
             </div>
           </section>
 
-          {/* NNS Public Neuron Section */}
+          {/* NNS PUBLIC NEURON Section */}
           <section>
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
-              NNS Public Neuron
+              NNS PUBLIC NEURON
             </h2>
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
-              data-ocid="neuron.card"
+            <a
+              href="https://dashboard.internetcomputer.org/neuron/2927437143767212939"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
             >
-              {/* Neuron ID row */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
-                  <Brain className="h-6 w-6 text-gold" />
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="neuron.card"
+              >
+                {/* Neuron ID row */}
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <Brain className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                      Neuron ID
+                    </p>
+                    <CopyableId value={NEURON_ID} label="Neuron ID" />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
+
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+                {/* ICP Stake */}
+                <div>
                   <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                    Neuron ID
-                  </p>
-                  <CopyableId value={NEURON_ID} label="Neuron ID" />
-                </div>
-              </div>
-
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-
-              {/* ICP Stake */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
                     ICP Staked
                   </p>
-                  {neuronStake.isLoading ? (
-                    <Badge
-                      variant="outline"
-                      className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
-                    >
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading
-                    </Badge>
-                  ) : neuronUsdValue !== null ? (
-                    <span className="text-xs font-semibold text-gold/80">
-                      {formatUsd(neuronUsdValue)}
-                    </span>
-                  ) : neuronStake.data !== null &&
-                    neuronStake.data !== undefined ? (
-                    <Badge
-                      variant="outline"
-                      className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
-                    >
-                      <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-                    </Badge>
-                  ) : null}
+                  <div className="text-3xl font-heading font-bold text-gold tabular-nums">
+                    {HIDE_BALANCES ? (
+                      <span>0</span>
+                    ) : neuronStake.isLoading ? (
+                      <span className="opacity-40">—</span>
+                    ) : neuronStake.data !== null &&
+                      neuronStake.data !== undefined ? (
+                      neuronStake.data.toLocaleString("en-US", {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 4,
+                      })
+                    ) : (
+                      <span className="opacity-40 text-xl">Unavailable</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {HIDE_BALANCES ? (
+                      "ICP · $0.00 USD"
+                    ) : neuronStake.isLoading ? (
+                      <span className="opacity-40">Loading…</span>
+                    ) : neuronUsdValue !== null ? (
+                      <>ICP · {formatUsd(neuronUsdValue)} USD</>
+                    ) : (
+                      "ICP"
+                    )}
+                  </p>
                 </div>
-                <div className="text-3xl font-heading font-bold text-gold tabular-nums">
-                  {neuronStake.isLoading ? (
-                    <span className="opacity-40">—</span>
-                  ) : neuronStake.data !== null &&
-                    neuronStake.data !== undefined ? (
-                    neuronStake.data.toLocaleString("en-US", {
-                      minimumFractionDigits: 4,
-                      maximumFractionDigits: 4,
-                    })
-                  ) : (
-                    <span className="opacity-40 text-xl">Unavailable</span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground font-mono mt-1">
-                  ICP
+
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  This neuron stakes ICP on behalf of the treasury through the
+                  Network Nervous System (NNS), earning staking rewards that
+                  grow the bank over time.
                 </p>
-              </div>
-
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                This neuron stakes ICP on behalf of the treasury through the
-                Network Nervous System (NNS), earning staking rewards that grow
-                the bank over time.
-              </p>
-            </motion.div>
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
+                </div>
+              </motion.div>
+            </a>
           </section>
 
           {/* Future Investment Fund Section */}
           <section data-ocid="fund.section">
             <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
-              BITTY ON ICP Future Investment Fund
+              BITTY ON ICP FUTURE INVESTMENT FUND
             </h2>
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.15 }}
-              className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5"
-              data-ocid="fund.card"
+            <a
+              href="https://www.icexplorer.io/address/detail/vqr3d-eby7o-fiwpf-pllu5-yzmxy-4ut67-gnxgr-nfiqw-c3ked-6arfu-zae"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
             >
-              {/* Icon + balance */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
-                  <TrendingUp className="h-6 w-6 text-gold" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-sm font-semibold text-muted-foreground tracking-widest uppercase">
-                      $BITTYICP Balance
-                    </span>
-                    {fundBalance.isLoading && manualBalances.isLoading ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-[oklch(0.87_0.17_90/0.4)]"
-                      >
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />{" "}
-                        Loading
-                      </Badge>
-                    ) : fundHasManual && isAdmin ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-yellow-500/40 text-yellow-400"
-                      >
-                        <AlertTriangle className="h-3 w-3 mr-1" /> MANUAL
-                      </Badge>
-                    ) : fundUsdValue !== null ? (
-                      <span className="text-xs font-semibold text-gold/80">
-                        {formatUsd(fundUsdValue)}
-                      </span>
-                    ) : fundHasManual || fundHasLive ? (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-[oklch(0.87_0.17_90/0.4)] text-gold"
-                      >
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> LIVE
-                      </Badge>
-                    ) : null}
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.15 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="fund.card"
+              >
+                {/* Icon + balance */}
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <TrendingUp className="h-6 w-6 text-gold" />
                   </div>
-                  <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
-                    {fundBalance.isLoading && manualBalances.isLoading ? (
-                      <span className="opacity-40">—</span>
-                    ) : fundHasManual ? (
-                      manualFund
-                    ) : fundHasLive ? (
-                      formatBalance(fundLive!)
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                      $BITTYICP Balance
+                    </p>
+                    <div className="text-3xl font-heading font-bold text-gold tabular-nums break-all">
+                      {HIDE_BALANCES ? (
+                        <span>0</span>
+                      ) : fundBalance.isLoading && manualBalances.isLoading ? (
+                        <span className="opacity-40">—</span>
+                      ) : fundHasManual ? (
+                        manualFund
+                      ) : fundHasLive ? (
+                        formatBalance(fundLive!)
+                      ) : (
+                        <span className="opacity-40 text-xl">Unavailable</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {HIDE_BALANCES ? (
+                        "BITTY on ICP · $0.00 USD"
+                      ) : fundBalance.isLoading && manualBalances.isLoading ? (
+                        <span className="opacity-40">Loading…</span>
+                      ) : fundUsdValue !== null ? (
+                        <>BITTY on ICP · {formatUsd(fundUsdValue)} USD</>
+                      ) : fundHasManual && isAdmin ? (
+                        "BITTY on ICP · MANUAL OVERRIDE"
+                      ) : (
+                        "BITTY on ICP"
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The future investment fund is a fully funded wallet with{" "}
+                  <span className="text-gold font-semibold">$BITTYICP</span>{" "}
+                  that will remain unavailable until{" "}
+                  <span className="text-gold font-semibold">
+                    &ldquo;BITTY ON ICP&rdquo;
+                  </span>{" "}
+                  FDV is at a minimum{" "}
+                  <span className="text-gold font-semibold">
+                    $2,500,000.00 USD
+                  </span>
+                  . At this point the fund will be sold for $ICP and re-invested
+                  into the{" "}
+                  <span className="text-gold font-semibold">
+                    &ldquo;BITTY ICP BANK&rdquo;
+                  </span>{" "}
+                  to exponentially grow the daily dividends that the community
+                  will be able to vote on its usage every month.{" "}
+                  <span className="text-muted-foreground/60 italic">
+                    (Due to change to every week at that point)
+                  </span>
+                </p>
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
+                </div>
+              </motion.div>
+            </a>
+          </section>
+
+          {/* Games & Development Wallet */}
+          <section data-ocid="games.section">
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              DEVELOPMENTS WALLET
+            </h2>
+            <a
+              href="https://www.icexplorer.io/address/detail/slfhp-cxr4u-mn53d-4tz4a-gn4ds-snqfa-tunfl-rfyxy-zjtho-iwksr-hqe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="games.card"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <Gamepad2 className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {!gamesWallet ? (
+                      <div>
+                        <div className="text-2xl font-heading font-bold text-gold/60">
+                          COMING SOON
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Wallet address not yet configured
+                        </div>
+                      </div>
+                    ) : gamesBalances.isLoading ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                        balances...
+                      </div>
                     ) : (
-                      <span className="opacity-40 text-xl">Unavailable</span>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $ICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : gamesBalances.data?.icp != null ? (
+                              formatBalance(gamesBalances.data.icp)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : gamesIcpUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(gamesIcpUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $BITTYICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : gamesBalances.data?.bitty != null ? (
+                              formatBalance(gamesBalances.data.bitty)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : gamesUsdValue !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(gamesUsdValue)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono mt-1">
-                    BITTY on ICP
+                </div>
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This wallet receives{" "}
+                  <span className="text-gold font-semibold">$BITTYICP</span>{" "}
+                  when the community votes to send treasury funds to Games &amp;
+                  Development. Funds here are used to grow the{" "}
+                  <span className="text-gold font-semibold">BITTY ON ICP</span>{" "}
+                  ecosystem through new games, tools, and development
+                  initiatives.
+                </p>
+                <div className="text-xs text-muted-foreground/50">
+                  View on IC Dashboard ↗
+                </div>
+              </motion.div>
+            </a>
+          </section>
+          {/* Games & Rewards Wallet */}
+          <section data-ocid="rewards_wallet.section">
+            <h2 className="font-heading font-bold text-lg text-foreground tracking-tight mb-5">
+              GAMES AND REWARDS
+            </h2>
+            <a
+              href="https://www.icexplorer.io/address/detail/gayym-bg32z-py45s-ev5ck-fkt2o-zgyhb-j4top-cb2p3-udrip-qsh7q-jae"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.25 }}
+                className="glass-card-gold gold-glow rounded-2xl p-6 space-y-5 cursor-pointer hover:ring-2 hover:ring-[oklch(0.87_0.17_90/0.5)] transition-all"
+                data-ocid="rewards_wallet.card"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 rounded-xl bg-[oklch(0.87_0.17_90/0.12)] border border-[oklch(0.87_0.17_90/0.25)] p-3">
+                    <TrendingUp className="h-6 w-6 text-gold" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {rewardsWalletBalances.isLoading ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                        balances...
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $ICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : rewardsWalletBalances.data?.icp != null ? (
+                              formatBalance(rewardsWalletBalances.data.icp)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : rewardsWalletIcpUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(rewardsWalletIcpUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                            $BITTYICP Balance
+                          </div>
+                          <div className="text-2xl font-heading font-bold text-gold tabular-nums">
+                            {HIDE_BALANCES ? (
+                              <span>0</span>
+                            ) : rewardsWalletBalances.data?.bitty != null ? (
+                              formatBalance(rewardsWalletBalances.data.bitty)
+                            ) : (
+                              <span className="opacity-40 text-xl">
+                                Unavailable
+                              </span>
+                            )}
+                          </div>
+                          {HIDE_BALANCES ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              $0.00 USD
+                            </div>
+                          ) : rewardsWalletBittyUsd !== null ? (
+                            <div className="text-sm text-muted-foreground mt-0.5">
+                              {formatUsd(rewardsWalletBittyUsd)} USD
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-
-              {/* Description */}
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                The future investment fund is a fully funded wallet with{" "}
-                <span className="text-gold font-semibold">$BITTYICP</span> that
-                will remain unavailable until{" "}
-                <span className="text-gold font-semibold">
-                  &ldquo;BITTY ON ICP&rdquo;
-                </span>{" "}
-                FDV is at a minimum{" "}
-                <span className="text-gold font-semibold">
-                  $2,500,000.00 USD
-                </span>
-                . At this point the fund will be sold for $ICP and re-invested
-                into the{" "}
-                <span className="text-gold font-semibold">
-                  &ldquo;BITTY ICP BANK&rdquo;
-                </span>{" "}
-                to exponentially grow the daily dividends that the community
-                will be able to vote on its usage every month.{" "}
-                <span className="text-muted-foreground/60 italic">
-                  (Due to change to every week at that point)
-                </span>
-              </p>
-
-              {/* Fund wallet address — copyable */}
-              <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-1">
-                  Fund Wallet Address
+                <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The{" "}
+                  <span className="text-gold font-semibold">
+                    Games and Rewards wallet
+                  </span>{" "}
+                  is used to load the internal distribution wallet and fund
+                  community game rewards for{" "}
+                  <span className="text-gold font-semibold">BITTY ON ICP</span>.
                 </p>
-                <p className="text-xs text-muted-foreground mb-1">
-                  Copy this ID to verify the fund on-chain
-                </p>
-                <CopyableId value={FUND_WALLET} label="Fund Wallet Address" />
-              </div>
-            </motion.div>
+                <div className="text-xs text-muted-foreground/50">
+                  View on ICExplorer ↗
+                </div>
+              </motion.div>
+            </a>
           </section>
 
           {/* Announcements */}
@@ -1240,23 +1887,19 @@ export default function App() {
               href="https://bittyonicp.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-base font-semibold text-gold hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 text-2xl font-bold text-gold hover:opacity-80 transition-opacity tracking-wider"
               data-ocid="footer.link"
             >
-              Bittyonicp.com <ExternalLink className="h-4 w-4" />
+              BITTYONICP.COM <ExternalLink className="h-5 w-5" />
             </a>
           </div>
         </footer>
       </div>
-
-      {/* Login Modal */}
       <LoginModal
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
         onSuccess={handleLoginSuccess}
       />
-
-      {/* Admin Panel Dialog */}
       <Dialog open={adminOpen} onOpenChange={setAdminOpen}>
         <DialogContent
           className="glass-card border-0 max-w-2xl max-h-[90vh] overflow-y-auto"
@@ -1280,8 +1923,6 @@ export default function App() {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* How It Works Modal */}
       <Dialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen}>
         <DialogContent
           className="glass-card-gold border border-[oklch(0.87_0.17_90/0.3)] max-w-lg max-h-[85vh] overflow-y-auto"
@@ -1370,6 +2011,22 @@ export default function App() {
               the NNS staking — allowing a substantial increase to the rate of
               treasury growth.
             </p>
+
+            <div className="h-px bg-[oklch(0.87_0.17_90/0.2)]" />
+
+            <div className="space-y-3">
+              <h3 className="font-heading font-bold text-gold tracking-wide uppercase text-xs">
+                Games and Rewards Wallet
+              </h3>
+              <p className="text-muted-foreground">
+                The{" "}
+                <span className="text-gold font-semibold">
+                  Games and Rewards wallet
+                </span>{" "}
+                is used to load the internal distribution wallet and fund
+                community game rewards.
+              </p>
+            </div>
 
             <div className="flex justify-end pt-1">
               <Button
